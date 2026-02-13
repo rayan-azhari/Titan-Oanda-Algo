@@ -3,6 +3,8 @@ run_nautilus_live.py
 --------------------
 
 Live trading entry point using NautilusTrader and the OANDA adapter.
+Authenticates, configures the trading node, registers custom OANDA components,
+loads instruments, and starts the event loop.
 """
 
 import asyncio
@@ -32,8 +34,8 @@ from execution.nautilus_oanda.instruments import OandaInstrumentProvider
 from execution.nautilus_oanda.data import OandaDataClient
 from execution.nautilus_oanda.execution import OandaExecutionClient
 
-# Configure Logging?
-# Nautilus uses structlog.
+# Configure basic logging for the Nautilus node
+# NautilusTrader uses structlog for structured logging capabilities
 
 
 def main():
@@ -73,9 +75,8 @@ def main():
     )
 
     # 3. Register Clients
-    # Note: We need to register factories or instances depending on Nautilus version
-    # Modern Nautilus uses add_data_client_factory usually, or we can add instances if supported.
-    # For custom adapters, we often register the client class and config.
+    # We register factories that default to the configuration defined above.
+    # This pattern allows the trading node to instantiate clients as needed.
     
     node.add_data_client_factory(
         "OANDA", 
@@ -107,7 +108,7 @@ def main():
     signal.signal(signal.SIGINT, stop_node)
     signal.signal(signal.SIGTERM, stop_node)
 
-    # Run!
+    # Run the node (blocking)
     node.run()
 
 if __name__ == "__main__":

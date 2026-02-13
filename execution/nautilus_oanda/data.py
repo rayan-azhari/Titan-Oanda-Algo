@@ -123,10 +123,9 @@ class OandaDataClient(LiveDataClient):
             def stream_generator():
                 return self._api.request(r)
 
-            # Iterating the generator blocks, so we do it in an executor?
-            # Actually, requests.iter_lines() is blocking.
-            # We must run the entire consumption loop in the executor.
-            
+            # The OANDA v20 client's stream request is a blocking generator.
+            # To prevent blocking the Nautilus asyncio event loop, we must run
+            # the consumption loop in a separate thread using the default executor.
             await self._loop.run_in_executor(None, self._consume_stream, r)
 
         except asyncio.CancelledError:
@@ -159,7 +158,9 @@ class OandaDataClient(LiveDataClient):
         instrument_id = parse_instrument_id(data["instrument"])
         timestamp = parse_datetime(data["time"])
         
-        # OANDA sends multiple levels of depth, we take the top (0)
+        # Bid/Ask Mapping:
+        # We use the first level of depth (index 0) which represents the best available price.
+        # Liquidity is cast to standard integer units.
         bid = Decimal(data["bids"][0]["price"])
         ask = Decimal(data["asks"][0]["price"])
         bid_size = int(data["bids"][0]["liquidity"])
@@ -175,12 +176,10 @@ class OandaDataClient(LiveDataClient):
             ts_init=self._clock.timestamp_ns(),
         )
         
-        # Push to message bus (thread-safe?)
-        # msgbus.publish_data broken? 
-        # Nautilus objects methods are usually not thread-safe if they touch shared state.
-        # But handle_data just pushes to a queue usually.
-        # Ideally we schedule the handle_data call on the loop.
-        
+        # Thread Safety:
+        # This method runs in the executor thread. We must properly schedule
+        # the data handling on the main asyncio event loop using `call_soon_threadsafe`
+        # to ensure thread-safety within the Nautilus core.
         self._loop.call_soon_threadsafe(self.handle_data, tick)
 
     def handle_data(self, data: QuoteTick):

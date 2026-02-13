@@ -8,6 +8,11 @@ Higher timeframes set the directional bias; lower timeframes time
 the entry.
 
 Directive: Multi-Timeframe Confluence.md
+
+WARNING: This script is destructive. It will:
+1. Cancel ALL pending orders for the account.
+2. Market-close ALL open positions for the account.
+Use only in emergency situations where the algorithm is out of control.
 """
 
 import sys
@@ -43,7 +48,8 @@ def compute_trend(close: pd.Series, fast: int = 20, slow: int = 50) -> pd.Series
     ma_fast = close.rolling(window=fast).mean()
     ma_slow = close.rolling(window=slow).mean()
 
-    # Require 0.1% separation to avoid chop
+    # Require 0.1% separation between moving averages to confirm a trend.
+    # This filter avoids false signals during choppy/sideways markets where MAs frequently cross.
     spread = (ma_fast - ma_slow) / ma_slow
     trend = pd.Series(0, index=close.index)
     trend[spread > 0.001] = 1
@@ -137,8 +143,10 @@ def align_timeframes(
 ) -> pd.DataFrame:
     """Align signals from multiple timeframes onto the H1 index.
 
-    Higher timeframe signals are forward-filled onto the H1 timeline
-    so we never use future data.
+    Higher timeframe signals are forward-filled onto the H1 timeline.
+    # IMPORTANT: We use forward-fill to simulate real-time availability.
+    # At any H1 timestamp, we only know the state of the H4/D candle that *closed* previously.
+    # This prevents look-ahead bias.
 
     Args:
         h1_signals: H1 signal DataFrame.

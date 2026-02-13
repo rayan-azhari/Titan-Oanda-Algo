@@ -2,6 +2,11 @@
 kill_switch.py — Emergency: flatten all positions and cancel all pending orders.
 
 Directive: 07_live_deployment.md
+
+WARNING: This script is destructive. It will:
+1. Cancel ALL pending orders.
+2. Market-close ALL open positions.
+Use only in emergency situations.
 """
 
 import os
