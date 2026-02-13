@@ -1,0 +1,3 @@
+# Models Directory
+# Trained ML models (.joblib) are saved here.
+# This directory is tracked by git, but model files are deliverables.

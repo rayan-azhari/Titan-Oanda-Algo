@@ -1,0 +1,15 @@
+# ──────────────────────────────────────────────────────────
+# instruments.toml — Instruments and granularities to trade
+# ──────────────────────────────────────────────────────────
+
+[instruments]
+pairs = [
+    "EUR_USD",
+    "GBP_USD",
+    "AUD_USD",
+]
+
+granularities = [
+    "M5",     # 5-minute candles (primary for Alpha Research)
+    "H1",     # 1-hour candles
+]

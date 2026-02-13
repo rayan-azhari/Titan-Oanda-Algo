@@ -1,0 +1,9 @@
+# ──────────────────────────────────────────────────────────
+# risk.toml — Risk management parameters for live trading
+# ──────────────────────────────────────────────────────────
+
+[risk]
+max_position_size_units = 10000          # Max units per position
+max_daily_loss_pct = 2.0                 # Kill switch at 2% daily loss
+max_open_trades = 3                      # Max concurrent positions
+trailing_stop_pips = 15                  # Trailing stop distance

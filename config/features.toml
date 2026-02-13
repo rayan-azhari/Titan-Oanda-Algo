@@ -1,0 +1,18 @@
+# ──────────────────────────────────────────────────────────
+# features.toml — Feature engineering configuration
+# ──────────────────────────────────────────────────────────
+
+# Lagged return periods (look-back only, no future leakage)
+lags = [1, 2, 5, 10, 20]
+
+[trend]
+sma_periods = [20, 50, 200]
+ema_periods = [12, 26]
+macd = true
+
+[momentum]
+rsi = true
+
+[volatility]
+atr = true
+bollinger_bw = true
