@@ -5,7 +5,7 @@
 # Parameters are transferred here from VBT optimisation results.
 
 instrument = "EUR_USD"
-granularity = "M5"
+granularity = "H4"                       # Primary swing trading timeframe
 
 [rsi]
 window = 14
@@ -13,7 +13,7 @@ entry = 30                               # Buy when RSI < entry
 exit = 70                                # Sell when RSI > exit
 
 [costs]
-spread = 0.0002                          # 2 pips (as decimal)
+spread = 0.0003                          # ~3 pips (swing trading, realistic)
 commission_per_lot = 0.0                 # OANDA has no separate commission
 
 [execution]

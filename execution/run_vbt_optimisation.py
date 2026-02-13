@@ -1,10 +1,12 @@
-"""run_vbt_optimisation.py — Vectorised strategy optimisation using VectorBT Pro.
+"""run_vbt_optimisation.py — Vectorised strategy optimisation using VectorBT (free).
 
 Runs parameterised strategy backtests across multiple indicator ranges,
-generates Sharpe Ratio heatmaps, and exports optimal parameters to
-config/strategy_config.toml.
+generates Sharpe Ratio heatmaps via plotly, and exports optimal parameters
+to config/strategy_config.toml.
 
-Directive: Alpha Research Loop (VectorBT Pro).md
+Includes in-sample / out-of-sample split to detect overfitting.
+
+Directive: Alpha Research Loop (VectorBT).md
 """
 
 import sys
@@ -22,10 +24,15 @@ REPORTS_DIR = PROJECT_ROOT / ".tmp" / "reports"
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
 try:
-    import vectorbtpro as vbt
+    import vectorbt as vbt
 except ImportError:
-    print("ERROR: vectorbtpro is not installed. Run `uv sync` first.")
-    print("       Note: VectorBT Pro requires a valid license.")
+    print("ERROR: vectorbt is not installed. Run `uv sync` first.")
+    sys.exit(1)
+
+try:
+    import plotly.graph_objects as go
+except ImportError:
+    print("ERROR: plotly is not installed. Run `uv sync` first.")
     sys.exit(1)
 
 
@@ -44,7 +51,7 @@ def load_raw_data(pair: str, granularity: str) -> pd.DataFrame:
 
     Args:
         pair: Instrument name (e.g., "EUR_USD").
-        granularity: Candle granularity (e.g., "M5").
+        granularity: Candle granularity (e.g., "H4", "D").
 
     Returns:
         DataFrame with timestamp-indexed OHLCV data.
@@ -62,15 +69,33 @@ def load_raw_data(pair: str, granularity: str) -> pd.DataFrame:
     return df
 
 
-@vbt.chunked(
-    n_chunks="auto",
-    show_progress=True,
-)
-def run_rsi_optimisation(close: pd.Series, rsi_windows: list[int], entry_thresholds: list[int]):
+def split_in_out_of_sample(
+    df: pd.DataFrame, is_ratio: float = 0.70
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Split data into in-sample and out-of-sample.
+
+    Args:
+        df: Full OHLCV DataFrame.
+        is_ratio: Fraction of data for in-sample (default 70%).
+
+    Returns:
+        Tuple of (in_sample_df, out_of_sample_df).
+    """
+    split_idx = int(len(df) * is_ratio)
+    is_df = df.iloc[:split_idx]
+    oos_df = df.iloc[split_idx:]
+    print(f"    IS: {len(is_df)} bars ({is_df.index.min()} → {is_df.index.max()})")
+    print(f"    OOS: {len(oos_df)} bars ({oos_df.index.min()} → {oos_df.index.max()})")
+    return is_df, oos_df
+
+
+def run_rsi_optimisation(
+    close: pd.Series, rsi_windows: list[int], entry_thresholds: list[int]
+):
     """Run parameterised RSI strategy optimisation.
 
-    Uses vbt.parameterized to sweep across RSI window and
-    entry threshold combinations.
+    Uses vectorbt's built-in RSI indicator and Portfolio.from_signals
+    to sweep across RSI window and entry threshold combinations.
 
     Args:
         close: Close price series.
@@ -90,78 +115,150 @@ def run_rsi_optimisation(close: pd.Series, rsi_windows: list[int], entry_thresho
         entries=entries,
         exits=exits,
         init_cash=10_000,
-        fees=0.0002,  # 2 pip spread cost
+        fees=0.0003,  # ~3 pip spread (realistic for swing trading)
     )
     return portfolio
 
 
-def generate_sharpe_heatmap(portfolio, rsi_windows: list[int], entry_thresholds: list[int]) -> Path:
-    """Generate and save a Sharpe Ratio heatmap.
+def generate_sharpe_heatmap(
+    sharpe_df: pd.DataFrame, pair: str, label: str = "IS"
+) -> Path:
+    """Generate and save a Sharpe Ratio heatmap using plotly.
 
     Args:
-        portfolio: VBT Portfolio object from optimisation.
-        rsi_windows: RSI window values (y-axis).
-        entry_thresholds: Entry threshold values (x-axis).
+        sharpe_df: 2D DataFrame of Sharpe values (rows=windows, cols=thresholds).
+        pair: Instrument name for titling.
+        label: "IS" or "OOS" label.
 
     Returns:
         Path to the saved heatmap HTML file.
     """
-    sharpe = portfolio.sharpe_ratio()
-    heatmap_path = REPORTS_DIR / "sharpe_heatmap.html"
-
-    fig = sharpe.vbt.heatmap(
-        x_level="rsi_crossed_below_entry_thresholds",
-        y_level="rsi_window",
-        title="Sharpe Ratio Heatmap — RSI Strategy",
+    fig = go.Figure(data=go.Heatmap(
+        z=sharpe_df.values,
+        x=[str(c) for c in sharpe_df.columns],
+        y=[str(r) for r in sharpe_df.index],
+        colorscale="RdYlGn",
+        colorbar=dict(title="Sharpe"),
+    ))
+    fig.update_layout(
+        title=f"Sharpe Ratio Heatmap — {pair} ({label})",
+        xaxis_title="RSI Entry Threshold",
+        yaxis_title="RSI Window",
     )
+
+    heatmap_path = REPORTS_DIR / f"sharpe_heatmap_{pair}_{label.lower()}.html"
     fig.write_html(str(heatmap_path))
     print(f"  📊 Heatmap saved to {heatmap_path}")
     return heatmap_path
 
 
-def export_optimal_params(sharpe_series) -> dict:
-    """Identify the optimal parameter set from the Sharpe series.
-
-    Selects the parameters in the "Plateau of Stability" —
-    robust performance, not the single highest point.
+def sharpe_to_2d(sharpe_series, rsi_windows, entry_thresholds) -> pd.DataFrame:
+    """Reshape a flat Sharpe series into a 2D DataFrame for heatmap.
 
     Args:
-        sharpe_series: Series of Sharpe ratios indexed by parameter combos.
+        sharpe_series: Flat Sharpe series from VBT portfolio.
+        rsi_windows: RSI window values (row labels).
+        entry_thresholds: Entry threshold values (column labels).
 
     Returns:
-        Dictionary of optimal parameters.
+        2D DataFrame with windows as rows, thresholds as columns.
     """
-    best_idx = sharpe_series.idxmax()
-    best_sharpe = sharpe_series.max()
-    print(f"  🏆 Best Sharpe: {best_sharpe:.4f} at {best_idx}")
+    values = sharpe_series.values.reshape(len(rsi_windows), len(entry_thresholds))
+    return pd.DataFrame(values, index=rsi_windows, columns=entry_thresholds)
 
-    # TODO: Implement plateau detection for robustness
-    return {"best_params": best_idx, "sharpe": float(best_sharpe)}
+
+def find_plateau_candidates(sharpe_2d: pd.DataFrame, top_n: int = 5) -> pd.DataFrame:
+    """Find parameters in the 'Plateau of Stability'.
+
+    Selects candidates where neighbours are also profitable,
+    indicating robustness rather than curve-fitting.
+
+    Args:
+        sharpe_2d: 2D Sharpe DataFrame.
+        top_n: Number of top candidates to return.
+
+    Returns:
+        DataFrame of top candidates with their neighbour averages.
+    """
+    scores = []
+    for i in range(1, sharpe_2d.shape[0] - 1):
+        for j in range(1, sharpe_2d.shape[1] - 1):
+            centre = sharpe_2d.iloc[i, j]
+            neighbours = sharpe_2d.iloc[i-1:i+2, j-1:j+2].values.flatten()
+            neighbour_avg = np.mean(neighbours)
+            neighbour_min = np.min(neighbours)
+            scores.append({
+                "rsi_window": sharpe_2d.index[i],
+                "entry_threshold": sharpe_2d.columns[j],
+                "sharpe": centre,
+                "neighbour_avg": neighbour_avg,
+                "neighbour_min": neighbour_min,
+                "stability_score": neighbour_min,  # Worst neighbour = robustness
+            })
+
+    results = pd.DataFrame(scores)
+    if results.empty:
+        return results
+    return results.sort_values("stability_score", ascending=False).head(top_n)
 
 
 def main() -> None:
-    """Run the full VectorBT Pro optimisation loop."""
+    """Run the full VectorBT optimisation loop with OOS validation."""
     config = load_instruments_config()
     pairs = config.get("instruments", {}).get("pairs", [])
-    granularity = config.get("instruments", {}).get("granularities", ["M5"])[0]
+    granularity = config.get("instruments", {}).get("granularities", ["H4"])[0]
 
-    # Parameter ranges for RSI strategy
-    rsi_windows = list(range(10, 25))        # RSI 10–24
+    # Parameter ranges for RSI strategy (swing trading)
+    rsi_windows = list(range(10, 30))         # RSI 10–29
     entry_thresholds = list(range(20, 40))    # Entry at RSI 20–39
 
     for pair in pairs:
-        print(f"\n🔬 Optimising {pair} ({granularity})...\n")
+        print(f"\n{'='*60}")
+        print(f"🔬 Optimising {pair} ({granularity})")
+        print(f"{'='*60}\n")
+
         df = load_raw_data(pair, granularity)
-        close = df["close"]
+        is_df, oos_df = split_in_out_of_sample(df)
 
-        portfolio = run_rsi_optimisation(close, rsi_windows, entry_thresholds)
-        sharpe = portfolio.sharpe_ratio()
+        # --- In-Sample Optimisation ---
+        print(f"\n  ▶ In-Sample Optimisation...")
+        is_portfolio = run_rsi_optimisation(is_df["close"], rsi_windows, entry_thresholds)
+        is_sharpe = is_portfolio.sharpe_ratio()
+        is_sharpe_2d = sharpe_to_2d(is_sharpe, rsi_windows, entry_thresholds)
+        generate_sharpe_heatmap(is_sharpe_2d, pair, "IS")
 
-        generate_sharpe_heatmap(portfolio, rsi_windows, entry_thresholds)
-        optimal = export_optimal_params(sharpe)
-        print(f"  Optimal params: {optimal}")
+        # --- Plateau candidates ---
+        candidates = find_plateau_candidates(is_sharpe_2d)
+        if candidates.empty:
+            print(f"  ⚠️  No stable candidates for {pair}. Skipping OOS.")
+            continue
 
-    print("\n✅ VBT optimisation complete. Transfer results to config/strategy_config.toml.\n")
+        print(f"\n  🏆 Top IS Plateau Candidates:")
+        for _, row in candidates.iterrows():
+            print(f"     RSI({int(row['rsi_window'])}) < {int(row['entry_threshold'])}"
+                  f"  Sharpe={row['sharpe']:.3f}  NeighMin={row['neighbour_min']:.3f}")
+
+        # --- Out-of-Sample Validation ---
+        print(f"\n  ▶ Out-of-Sample Validation...")
+        oos_portfolio = run_rsi_optimisation(oos_df["close"], rsi_windows, entry_thresholds)
+        oos_sharpe = oos_portfolio.sharpe_ratio()
+        oos_sharpe_2d = sharpe_to_2d(oos_sharpe, rsi_windows, entry_thresholds)
+        generate_sharpe_heatmap(oos_sharpe_2d, pair, "OOS")
+
+        # --- Parity Check ---
+        print(f"\n  ▶ IS vs OOS Parity Check:")
+        for _, row in candidates.iterrows():
+            w = int(row["rsi_window"])
+            t = int(row["entry_threshold"])
+            is_val = is_sharpe_2d.loc[w, t]
+            oos_val = oos_sharpe_2d.loc[w, t]
+            ratio = oos_val / is_val if is_val != 0 else 0
+            status = "✓ PASS" if ratio >= 0.5 else "✗ OVERFIT"
+            print(f"     RSI({w})<{t}: IS={is_val:.3f} OOS={oos_val:.3f} "
+                  f"Ratio={ratio:.2f} {status}")
+
+    print(f"\n✅ VBT optimisation complete.")
+    print(f"   Transfer validated results to config/strategy_config.toml.\n")
 
 
 if __name__ == "__main__":

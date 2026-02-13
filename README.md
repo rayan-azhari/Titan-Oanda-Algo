@@ -1,6 +1,6 @@
 # Titan-Oanda-Algo
 
-> A quantitative trading system for OANDA — ML-driven strategy discovery, VectorBT Pro optimisation, NautilusTrader execution, and GCE deployment.
+> A quantitative **swing trading** system for OANDA — ML-driven strategy discovery, VectorBT optimisation, NautilusTrader execution, and GCE deployment.
 
 ---
 
@@ -14,13 +14,24 @@ This project follows a **3-layer architecture** that separates *Probabilistic In
 | **Orchestration** | Agent context | Intelligent routing — read directives, choose tools, handle errors |
 | **Execution** | `execution/` | Deterministic Python scripts — API calls, data processing, ML training |
 
+## Trading Style
+
+**Daily swing trading** on higher timeframes:
+
+| Timeframe | Role |
+|---|---|
+| H1 | Entry/exit timing |
+| H4 | Primary analysis |
+| D | Trend confirmation |
+| W | Regime filter |
+
 ## Directory Structure
 
 ```
 ├── AGENTS.MD                      ← Agent system prompt
 ├── Titan Workspace Rules.md       ← Technical & ML constraints
 ├── directives/                    ← SOPs
-│   ├── Alpha Research Loop (VectorBT Pro).md
+│   ├── Alpha Research Loop (VectorBT).md
 │   ├── Machine Learning Strategy Discovery.md
 │   ├── Nautilus-Oanda Adapter Construction.md
 │   ├── Strategy Validation (Backtesting.py).md
@@ -29,8 +40,9 @@ This project follows a **3-layer architecture** that separates *Probabilistic In
 ├── execution/                     ← Python scripts
 │   ├── setup_env.py               ← Interactive .env setup
 │   ├── verify_connection.py       ← OANDA connection test
-│   ├── download_oanda_data.py     ← Historical M5 OHLC data
-│   ├── run_vbt_optimisation.py    ← VectorBT Pro parameter sweep
+│   ├── download_oanda_data.py     ← Historical H1/H4/D/W OHLC data
+│   ├── validate_data.py           ← Data quality checks
+│   ├── run_vbt_optimisation.py    ← VectorBT parameter sweep + OOS validation
 │   ├── build_ml_features.py       ← Feature matrix (X) + target (y)
 │   ├── train_ml_model.py          ← Walk-forward ML training
 │   ├── run_backtesting_validation.py ← Backtesting.py visual audit
@@ -73,6 +85,7 @@ uv run python execution/verify_connection.py
 ### 4. Alpha Research Loop
 ```bash
 uv run python execution/download_oanda_data.py
+uv run python execution/validate_data.py
 uv run python execution/run_vbt_optimisation.py
 ```
 
@@ -88,13 +101,21 @@ uv run python execution/run_backtesting_validation.py
 uv run python execution/run_live.py --mode practice
 ```
 
-## Agent Personas
+## Research Tools
 
-| Agent | Responsibilities |
-|---|---|
-| **Architect** | File structure, `config/` management, high-level design |
-| **Engineer** | Python/Rust code, API adapters, Nautilus integration |
-| **Researcher** | VectorBT scripts, ML features, model training, notebooks |
+| Tool | Role | Cost |
+|---|---|---|
+| **VectorBT** (free) | Broad parameter sweeps, heatmaps | Free |
+| **Backtesting.py** | Visual trade inspection | Free |
+| **NautilusTrader** | Final validation with real spread/slippage | Free |
+| **VectorBT Pro** | Optional upgrade for large-scale optimisation | ~$25/mo |
+
+## Roadmap
+
+- [ ] Ensemble / multi-strategy framework
+- [ ] Time-varying spread model
+- [ ] Multi-timeframe confluence signals (H1 + H4 + D)
+- [ ] VectorBT Pro upgrade for production-scale mining
 
 ## Rules of Engagement
 

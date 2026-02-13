@@ -4,6 +4,17 @@
 
 Containerise the Nautilus system and deploy it to a low-latency **Google Compute Engine (GCE)** instance.
 
+## Pre-Flight Checklist
+
+> [!CAUTION]
+> **All items must pass before deployment.**
+
+- [ ] `config/risk.toml` reviewed — max drawdown, position limits, daily loss cap
+- [ ] `execution/kill_switch.py` tested on practice account
+- [ ] OOS Sharpe ≥ 50% of IS Sharpe (from VBT optimisation)
+- [ ] Model Sharpe ≥ 1.5 (from `train_ml_model.py`)
+- [ ] `execution/validate_data.py` passed on latest data
+
 ## Execution Steps
 
 ### 1. Containerisation

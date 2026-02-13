@@ -1,6 +1,7 @@
 # ──────────────────────────────────────────────────────────
 # instruments.toml — Instruments and granularities to trade
 # ──────────────────────────────────────────────────────────
+# Swing trading focus: higher timeframes only.
 
 [instruments]
 pairs = [
@@ -10,6 +11,8 @@ pairs = [
 ]
 
 granularities = [
-    "M5",     # 5-minute candles (primary for Alpha Research)
-    "H1",     # 1-hour candles
+    "H1",    # 1-hour candles (entry/exit timing)
+    "H4",    # 4-hour candles (primary analysis)
+    "D",     # Daily candles (trend confirmation)
+    "W",     # Weekly candles (regime filter)
 ]
