@@ -36,6 +36,7 @@ This project follows a **3-layer architecture** that separates *Probabilistic In
 │   ├── Nautilus-Oanda Adapter Construction.md
 │   ├── Strategy Validation (Backtesting.py).md
 │   ├── Ensemble Strategy Framework.md
+│   ├── Multi-Timeframe Confluence.md
 │   ├── Live Deployment and Monitoring.md
 │   └── Workspace Initialisation.md
 ├── execution/                     ← Python scripts
@@ -45,7 +46,8 @@ This project follows a **3-layer architecture** that separates *Probabilistic In
 │   ├── validate_data.py           ← Data quality checks
 │   ├── spread_model.py            ← Time-varying spread estimation
 │   ├── run_vbt_optimisation.py    ← VectorBT parameter sweep + OOS validation
-│   ├── build_ml_features.py       ← Feature matrix (X) + target (y)
+│   ├── mtf_confluence.py          ← Multi-timeframe signal alignment
+│   ├── build_ml_features.py       ← Feature matrix (X) + target (y) + MTF
 │   ├── train_ml_model.py          ← Walk-forward ML training
 │   ├── run_backtesting_validation.py ← Backtesting.py visual audit
 │   ├── run_ensemble.py            ← Multi-strategy signal aggregation
@@ -62,7 +64,8 @@ This project follows a **3-layer architecture** that separates *Probabilistic In
 │   ├── training.toml              ← ML model & hyperparameters
 │   ├── risk.toml                  ← Position & risk limits
 │   ├── spread.toml                ← Session-based spread estimates
-│   └── ensemble.toml              ← Multi-strategy registry & weights
+│   ├── ensemble.toml              ← Multi-strategy registry & weights
+│   └── mtf.toml                   ← Multi-timeframe weights & params
 ├── models/                        ← Deliverable: trained .joblib models
 ├── tests/                         ← Unit tests
 ├── .tmp/                          ← Intermediate: raw data, reports, logs
@@ -93,6 +96,7 @@ uv run python execution/verify_connection.py
 uv run python execution/download_oanda_data.py
 uv run python execution/validate_data.py
 uv run python execution/run_vbt_optimisation.py
+uv run python execution/mtf_confluence.py
 ```
 
 ### 5. ML Strategy Discovery
@@ -120,7 +124,7 @@ uv run python execution/run_live.py --mode practice
 
 - [x] Ensemble / multi-strategy framework
 - [x] Time-varying spread model
-- [ ] Multi-timeframe confluence signals (H1 + H4 + D)
+- [x] Multi-timeframe confluence signals (H1 + H4 + D)
 - [ ] VectorBT Pro upgrade for production-scale mining
 
 ## Rules of Engagement

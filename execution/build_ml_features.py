@@ -158,7 +158,9 @@ def time_of_day_features(timestamps: pd.Series) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # Feature Matrix Builder
 # ---------------------------------------------------------------------------
-def build_feature_matrix(df: pd.DataFrame, config: dict) -> tuple[pd.DataFrame, pd.Series]:
+def build_feature_matrix(
+    df: pd.DataFrame, config: dict, mtf_features: pd.DataFrame | None = None
+) -> tuple[pd.DataFrame, pd.Series]:
     """Build the full feature matrix (X) and target vector (y).
 
     IMPORTANT: The target is shifted backwards by 1 period to prevent
@@ -205,6 +207,18 @@ def build_feature_matrix(df: pd.DataFrame, config: dict) -> tuple[pd.DataFrame, 
         tod = time_of_day_features(df["timestamp"])
         features = pd.concat([features, tod.set_index(features.index)], axis=1)
 
+    # --- Multi-timeframe confluence features (if available) ---
+    # These are pre-computed by mtf_confluence.py and aligned to H1 timeline.
+    mtf_cols = ["h1_bias", "h4_bias", "d_bias", "confluence_score",
+                "all_bullish", "all_bearish", "signal"]
+    if mtf_features is not None and not mtf_features.empty:
+        for col in mtf_cols:
+            if col in mtf_features.columns:
+                aligned = mtf_features[col].reindex(features.index, method="ffill")
+                features[f"mtf_{col}"] = aligned
+        print(f"    Added {sum(1 for c in mtf_cols if c in mtf_features.columns)} "
+              "MTF confluence features.")
+
     # --- Target vector (shifted backward by 1 to prevent look-ahead) ---
     # y[t] = 1 if close[t+1] > close[t], else 0
     target = (close.shift(-1) > close).astype(int)
@@ -246,7 +260,16 @@ def main() -> None:
         print(f"  Processing {raw_path.name}...")
         df = pd.read_parquet(raw_path)
 
-        features, target = build_feature_matrix(df, config)
+        # Load MTF confluence features if available
+        pair_gran = raw_path.stem  # e.g. "EUR_USD_H4"
+        pair = "_".join(pair_gran.split("_")[:2])  # e.g. "EUR_USD"
+        mtf_path = FEATURES_DIR / f"{pair}_mtf_confluence.parquet"
+        mtf_features = None
+        if mtf_path.exists():
+            mtf_features = pd.read_parquet(mtf_path)
+            print(f"    Loading MTF confluence from {mtf_path.name}")
+
+        features, target = build_feature_matrix(df, config, mtf_features=mtf_features)
 
         # Save feature matrix
         feat_name = raw_path.stem + "_features.parquet"

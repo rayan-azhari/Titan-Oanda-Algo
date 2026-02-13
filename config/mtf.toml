@@ -1,0 +1,33 @@
+# ──────────────────────────────────────────────────────────
+# mtf.toml — Multi-Timeframe Confluence Configuration
+# ──────────────────────────────────────────────────────────
+# Weights control how much each timeframe contributes to the
+# final confluence score. Higher timeframes = more influence.
+
+[weights]
+H1 = 0.20           # Entry timing — lowest weight
+H4 = 0.40           # Primary swing frame — highest weight
+D  = 0.40           # Trend confirmation — equal to H4
+
+# Minimum weighted score to generate a trade signal.
+# 0.3 = at least 2 out of 3 timeframes must agree strongly.
+confirmation_threshold = 0.30
+
+# Per-timeframe indicator settings
+[H1]
+fast_ma = 20
+slow_ma = 50
+rsi_period = 14
+structure_period = 20
+
+[H4]
+fast_ma = 20
+slow_ma = 50
+rsi_period = 14
+structure_period = 20
+
+[D]
+fast_ma = 10         # Shorter MAs on daily — fewer bars available
+slow_ma = 30
+rsi_period = 14
+structure_period = 10
