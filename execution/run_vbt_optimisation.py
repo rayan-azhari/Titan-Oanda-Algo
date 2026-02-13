@@ -35,6 +35,8 @@ except ImportError:
     print("ERROR: plotly is not installed. Run `uv sync` first.")
     sys.exit(1)
 
+from spread_model import build_spread_series, build_total_cost_series
+
 
 def load_instruments_config() -> dict:
     """Load the instruments configuration from config/instruments.toml."""
@@ -90,7 +92,8 @@ def split_in_out_of_sample(
 
 
 def run_rsi_optimisation(
-    close: pd.Series, rsi_windows: list[int], entry_thresholds: list[int]
+    close: pd.Series, rsi_windows: list[int], entry_thresholds: list[int],
+    fees: float = 0.0003,
 ):
     """Run parameterised RSI strategy optimisation.
 
@@ -101,6 +104,7 @@ def run_rsi_optimisation(
         close: Close price series.
         rsi_windows: List of RSI lookback periods to test.
         entry_thresholds: List of RSI entry thresholds to test.
+        fees: Transaction cost as a decimal (e.g., 0.0003 = 3 pips).
 
     Returns:
         VBT Portfolio object with all parameter combinations.
@@ -115,7 +119,7 @@ def run_rsi_optimisation(
         entries=entries,
         exits=exits,
         init_cash=10_000,
-        fees=0.0003,  # ~3 pip spread (realistic for swing trading)
+        fees=fees,
     )
     return portfolio
 
@@ -220,9 +224,16 @@ def main() -> None:
         df = load_raw_data(pair, granularity)
         is_df, oos_df = split_in_out_of_sample(df)
 
+        # Calculate session-weighted average spread for this pair
+        spread_series = build_spread_series(df, pair)
+        avg_spread = float(spread_series.mean())
+        print(f"  📊 Using session-weighted spread: {avg_spread*10000:.1f} pips\n")
+
         # --- In-Sample Optimisation ---
-        print(f"\n  ▶ In-Sample Optimisation...")
-        is_portfolio = run_rsi_optimisation(is_df["close"], rsi_windows, entry_thresholds)
+        print(f"  ▶ In-Sample Optimisation...")
+        is_portfolio = run_rsi_optimisation(
+            is_df["close"], rsi_windows, entry_thresholds, fees=avg_spread
+        )
         is_sharpe = is_portfolio.sharpe_ratio()
         is_sharpe_2d = sharpe_to_2d(is_sharpe, rsi_windows, entry_thresholds)
         generate_sharpe_heatmap(is_sharpe_2d, pair, "IS")
@@ -240,7 +251,9 @@ def main() -> None:
 
         # --- Out-of-Sample Validation ---
         print(f"\n  ▶ Out-of-Sample Validation...")
-        oos_portfolio = run_rsi_optimisation(oos_df["close"], rsi_windows, entry_thresholds)
+        oos_portfolio = run_rsi_optimisation(
+            oos_df["close"], rsi_windows, entry_thresholds, fees=avg_spread
+        )
         oos_sharpe = oos_portfolio.sharpe_ratio()
         oos_sharpe_2d = sharpe_to_2d(oos_sharpe, rsi_windows, entry_thresholds)
         generate_sharpe_heatmap(oos_sharpe_2d, pair, "OOS")

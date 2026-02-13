@@ -4,7 +4,7 @@ run_live.py — Live / Paper trading engine.
 Connects to OANDA, loads the trained model, generates signals in real-time,
 and executes trades with risk management.
 
-Directive: 07_live_deployment.md
+Directive: Live Deployment and Monitoring.md
 """
 
 import argparse
@@ -30,6 +30,8 @@ import oandapyV20
 import oandapyV20.endpoints.orders as orders
 import oandapyV20.endpoints.positions as positions
 import oandapyV20.endpoints.pricing as pricing
+
+from rate_limiter import rate_limited_call, order_limiter, api_limiter
 
 MODELS_DIR = PROJECT_ROOT / "models"
 LOGS_DIR = PROJECT_ROOT / ".tmp" / "logs"
@@ -94,14 +96,18 @@ def main() -> None:
     # Main trading loop (placeholder — extend with real signal generation)
     # -----------------------------------------------------------------------
     logger.info("Entering main loop. Press Ctrl+C to stop.")
+    logger.info(f"Rate limiter active: API={api_limiter.capacity}/s, "
+                f"Orders={order_limiter.capacity}/s")
     try:
         while True:
             # TODO: Implement real-time signal generation
-            # 1. Fetch latest candle(s)
+            # 1. Fetch latest candle(s) — use rate_limited_call(client.request, req)
             # 2. Build features
             # 3. model.predict(features) → signal
             # 4. Check risk limits
-            # 5. Execute order if signal within limits
+            # 5. Execute order — use rate_limited_call(
+            #        client.request, order_req, limiter=order_limiter
+            #    )
             logger.info("Heartbeat — engine running. (Signal generation not yet implemented)")
             time.sleep(60)
     except KeyboardInterrupt:

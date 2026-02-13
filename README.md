@@ -35,6 +35,7 @@ This project follows a **3-layer architecture** that separates *Probabilistic In
 │   ├── Machine Learning Strategy Discovery.md
 │   ├── Nautilus-Oanda Adapter Construction.md
 │   ├── Strategy Validation (Backtesting.py).md
+│   ├── Ensemble Strategy Framework.md
 │   ├── Live Deployment and Monitoring.md
 │   └── Workspace Initialisation.md
 ├── execution/                     ← Python scripts
@@ -42,10 +43,13 @@ This project follows a **3-layer architecture** that separates *Probabilistic In
 │   ├── verify_connection.py       ← OANDA connection test
 │   ├── download_oanda_data.py     ← Historical H1/H4/D/W OHLC data
 │   ├── validate_data.py           ← Data quality checks
+│   ├── spread_model.py            ← Time-varying spread estimation
 │   ├── run_vbt_optimisation.py    ← VectorBT parameter sweep + OOS validation
 │   ├── build_ml_features.py       ← Feature matrix (X) + target (y)
 │   ├── train_ml_model.py          ← Walk-forward ML training
 │   ├── run_backtesting_validation.py ← Backtesting.py visual audit
+│   ├── run_ensemble.py            ← Multi-strategy signal aggregation
+│   ├── rate_limiter.py            ← Token bucket for OANDA API
 │   ├── parse_oanda_instruments.py ← Nautilus instrument provider
 │   ├── run_live.py                ← Live/paper trading engine
 │   ├── kill_switch.py             ← Emergency: flatten all positions
@@ -56,7 +60,9 @@ This project follows a **3-layer architecture** that separates *Probabilistic In
 │   ├── features.toml              ← Technical indicator definitions
 │   ├── strategy_config.toml       ← Optimised strategy parameters
 │   ├── training.toml              ← ML model & hyperparameters
-│   └── risk.toml                  ← Position & risk limits
+│   ├── risk.toml                  ← Position & risk limits
+│   ├── spread.toml                ← Session-based spread estimates
+│   └── ensemble.toml              ← Multi-strategy registry & weights
 ├── models/                        ← Deliverable: trained .joblib models
 ├── tests/                         ← Unit tests
 ├── .tmp/                          ← Intermediate: raw data, reports, logs
@@ -112,8 +118,8 @@ uv run python execution/run_live.py --mode practice
 
 ## Roadmap
 
-- [ ] Ensemble / multi-strategy framework
-- [ ] Time-varying spread model
+- [x] Ensemble / multi-strategy framework
+- [x] Time-varying spread model
 - [ ] Multi-timeframe confluence signals (H1 + H4 + D)
 - [ ] VectorBT Pro upgrade for production-scale mining
 
