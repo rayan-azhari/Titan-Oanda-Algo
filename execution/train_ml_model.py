@@ -28,6 +28,7 @@ REPORTS_DIR = PROJECT_ROOT / ".tmp" / "reports"
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
+
 # ---------------------------------------------------------------------------
 # Model Registry
 # ---------------------------------------------------------------------------
@@ -46,6 +47,7 @@ def _get_model_registry() -> dict:
 
     try:
         from xgboost import XGBClassifier
+
         registry["XGBClassifier"] = XGBClassifier
     except ImportError:
         print("  ⚠️ xgboost not installed. XGBClassifier unavailable.")
@@ -149,6 +151,7 @@ def main() -> None:
 
     # Filter out incompatible hyperparameters for the chosen model
     import inspect
+
     valid_params = set(inspect.signature(model_cls.__init__).parameters.keys())
     filtered_hp = {k: v for k, v in hp_cfg.items() if k in valid_params}
 

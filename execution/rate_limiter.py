@@ -135,6 +135,7 @@ def rate_limited_call(func, *args, limiter: TokenBucket = api_limiter, **kwargs)
 # Demo / self-test
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     """Demonstrate the rate limiter with simulated API calls."""
     print("🪣 Token Bucket Rate Limiter — Demo\n")
@@ -147,8 +148,10 @@ def main() -> None:
         start = time.monotonic()
         acquired = limiter.acquire(timeout=10.0)
         elapsed = time.monotonic() - start
-        print(f"  Request {i+1:2d}: {'✓ granted' if acquired else '✗ denied'}"
-              f"  (waited {elapsed:.3f}s, tokens: {limiter.available:.1f})")
+        print(
+            f"  Request {i + 1:2d}: {'✓ granted' if acquired else '✗ denied'}"
+            f"  (waited {elapsed:.3f}s, tokens: {limiter.available:.1f})"
+        )
 
     print("\n✅ Rate limiter working correctly.\n")
 

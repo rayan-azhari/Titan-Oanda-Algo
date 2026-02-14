@@ -51,6 +51,7 @@ except ImportError:
 # Data Loading
 # ─────────────────────────────────────────────────────────────────────
 
+
 def load_ohlcv(pair: str, gran: str) -> pd.DataFrame | None:
     """Load Parquet OHLCV data, return None if missing."""
     path = DATA_DIR / f"{pair}_{gran}.parquet"
@@ -69,11 +70,14 @@ def load_ohlcv(pair: str, gran: str) -> pd.DataFrame | None:
 # Technical Indicators
 # ─────────────────────────────────────────────────────────────────────
 
+
 def sma(s, p):
     return s.rolling(p).mean()
 
+
 def ema(s, p):
     return s.ewm(span=p, adjust=False).mean()
+
 
 def rsi(s, p=14):
     d = s.diff()
@@ -81,19 +85,23 @@ def rsi(s, p=14):
     loss = (-d.where(d < 0, 0.0)).rolling(p).mean()
     return 100 - (100 / (1 + g / loss))
 
+
 def atr(df, p=14):
     h, low, c = df["high"], df["low"], df["close"]
     tr = pd.concat([h - low, (h - c.shift(1)).abs(), (low - c.shift(1)).abs()], axis=1).max(axis=1)
     return tr.rolling(p).mean()
 
+
 def macd_hist(s, fast=12, slow=26, sig=9):
     m = ema(s, fast) - ema(s, slow)
     return m - ema(m, sig)
+
 
 def bollinger_bw(s, p=20):
     mid = sma(s, p)
     std = s.rolling(p).std()
     return (2 * 2 * std) / mid
+
 
 def stochastic(df, k_period=14, d_period=3):
     """Stochastic oscillator %K and %D."""
@@ -102,6 +110,7 @@ def stochastic(df, k_period=14, d_period=3):
     k = 100 * (df["close"] - low_min) / (high_max - low_min)
     d = k.rolling(d_period).mean()
     return k, d
+
 
 def adx(df, period=14):
     """Average Directional Index (simplified)."""
@@ -121,6 +130,7 @@ def adx(df, period=14):
 # ─────────────────────────────────────────────────────────────────────
 # Feature Engineering
 # ─────────────────────────────────────────────────────────────────────
+
 
 def build_features(df: pd.DataFrame, context_data: dict[str, pd.DataFrame]) -> pd.DataFrame:
     """Build comprehensive feature matrix from base data and context data."""
@@ -190,8 +200,9 @@ def build_features(df: pd.DataFrame, context_data: dict[str, pd.DataFrame]) -> p
     return feats
 
 
-def build_target(close: pd.Series, atr_series: pd.Series,
-                 tp_mult: float = 1.5, sl_mult: float = 1.0) -> pd.Series:
+def build_target(
+    close: pd.Series, atr_series: pd.Series, tp_mult: float = 1.5, sl_mult: float = 1.0
+) -> pd.Series:
     """Build a 3-class directional target: 0 SHORT, 1 FLAT, 2 LONG.
 
     Uses ATR-based forward return thresholds to filter out noise.
@@ -210,7 +221,7 @@ def build_target(close: pd.Series, atr_series: pd.Series,
     threshold = atr_series / close * tp_mult
 
     target = pd.Series(1, index=close.index, name="target")  # Default 1 (FLAT)
-    target[fwd_return > threshold] = 2   # LONG
+    target[fwd_return > threshold] = 2  # LONG
     target[fwd_return < -threshold] = 0  # SHORT
 
     return target
@@ -219,6 +230,7 @@ def build_target(close: pd.Series, atr_series: pd.Series,
 # ─────────────────────────────────────────────────────────────────────
 # Walk-Forward Training
 # ─────────────────────────────────────────────────────────────────────
+
 
 def walk_forward_splits(n: int, n_splits: int = 5, min_train: float = 0.4):
     """Generate expanding-window walk-forward splits."""
@@ -239,21 +251,31 @@ def train_and_evaluate(X: pd.DataFrame, y: pd.Series, close: pd.Series):
 
     models = {
         "GradientBoosting": GradientBoostingClassifier(
-            n_estimators=300, max_depth=4, learning_rate=0.05,
-            subsample=0.8, random_state=42,
+            n_estimators=300,
+            max_depth=4,
+            learning_rate=0.05,
+            subsample=0.8,
+            random_state=42,
         ),
         "RandomForest": RandomForestClassifier(
-            n_estimators=300, max_depth=8, min_samples_leaf=20,
-            random_state=42, n_jobs=-1,
+            n_estimators=300,
+            max_depth=8,
+            min_samples_leaf=20,
+            random_state=42,
+            n_jobs=-1,
         ),
     }
 
     # Try to add XGBoost
     if xgb is not None:
         models["XGBoost"] = xgb.XGBClassifier(
-            n_estimators=300, max_depth=5, learning_rate=0.05,
-            subsample=0.8, colsample_bytree=0.8,
-            eval_metric="logloss", random_state=42,
+            n_estimators=300,
+            max_depth=5,
+            learning_rate=0.05,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            eval_metric="logloss",
+            random_state=42,
             use_label_encoder=False,
         )
     else:
@@ -265,9 +287,9 @@ def train_and_evaluate(X: pd.DataFrame, y: pd.Series, close: pd.Series):
     best_sharpe = -np.inf
     results = {}
 
-    print(f"\n  {'─'*60}")
+    print(f"\n  {'─' * 60}")
     print(f"  [TRAIN] Training {len(models)} models × 5 walk-forward folds")
-    print(f"  {'─'*60}\n")
+    print(f"  {'─' * 60}\n")
 
     for name, model in models.items():
         fold_sharpes = []
@@ -304,14 +326,16 @@ def train_and_evaluate(X: pd.DataFrame, y: pd.Series, close: pd.Series):
 
         # Class distribution in predictions
         pred_arr = np.array(all_preds)
-        n_long = (pred_arr == 2).sum()   # 2 is LONG
+        n_long = (pred_arr == 2).sum()  # 2 is LONG
         n_short = (pred_arr == 0).sum()  # 0 is SHORT
-        n_flat = (pred_arr == 1).sum()   # 1 is FLAT
+        n_flat = (pred_arr == 1).sum()  # 1 is FLAT
         total = len(pred_arr)
 
-        print(f"  {name:25s}  Sharpe={avg_sharpe:>7.3f}  "
-              f"Acc={avg_acc:.3f}  "
-              f"L={n_long}/{total} S={n_short}/{total} F={n_flat}/{total}")
+        print(
+            f"  {name:25s}  Sharpe={avg_sharpe:>7.3f}  "
+            f"Acc={avg_acc:.3f}  "
+            f"L={n_long}/{total} S={n_short}/{total} F={n_flat}/{total}"
+        )
 
         results[name] = {
             "sharpe": avg_sharpe,
@@ -333,10 +357,12 @@ def train_and_evaluate(X: pd.DataFrame, y: pd.Series, close: pd.Series):
 
     # Feature importance
     importances = best_model.feature_importances_
-    imp_df = pd.DataFrame({
-        "feature": X.columns,
-        "importance": importances,
-    }).sort_values("importance", ascending=False)
+    imp_df = pd.DataFrame(
+        {
+            "feature": X.columns,
+            "importance": importances,
+        }
+    ).sort_values("importance", ascending=False)
 
     print("\n  📊 Top 15 Features:")
     for _, row in imp_df.head(15).iterrows():
@@ -350,11 +376,12 @@ def train_and_evaluate(X: pd.DataFrame, y: pd.Series, close: pd.Series):
 # VBT Backtest
 # ─────────────────────────────────────────────────────────────────────
 
+
 def optimize_exits(
     close: pd.Series,
     preds: np.ndarray,
     stop_values: list[float] = [0.005, 0.01, 0.015, 0.02],
-    freq: str = "4h"
+    freq: str = "4h",
 ) -> dict:
     """Optimize exit strategy (Fixed vs Trailing Stop) using OOS signals."""
     if vbt is None:
@@ -369,9 +396,9 @@ def optimize_exits(
     short_exits = pd.Series(preds == 2, index=close.index)
 
     results = []
-    print(f"\n  {'─'*60}")
+    print(f"\n  {'─' * 60}")
     print(f"  🏁 Exit Optimization (OOS) - Freq: {freq}")
-    print(f"  {'─'*60}")
+    print(f"  {'─' * 60}")
     print(f"  {'Type':<10} {'Stop':<8} {'Sharpe':<8} {'Return':<8} {'Trades':<6}")
 
     for sl in stop_values:
@@ -384,7 +411,9 @@ def optimize_exits(
             short_exits=short_exits,
             sl_stop=sl,
             tp_stop=sl * 2.0,  # 1:2 Risk:Reward
-            init_cash=10_000, fees=0.0002, freq=freq
+            init_cash=10_000,
+            fees=0.0002,
+            freq=freq,
         )
         stats_fixed = {
             "type": "Fixed",
@@ -394,9 +423,11 @@ def optimize_exits(
             "trades": int(pf_fixed.trades.count()),
         }
         results.append(stats_fixed)
-        print(f"  {stats_fixed['type']:<10} {stats_fixed['stop']:<8.3%} "
-              f"{stats_fixed['sharpe']:<8.3f} {stats_fixed['return']:<8.2f}% "
-              f"{stats_fixed['trades']:<6}")
+        print(
+            f"  {stats_fixed['type']:<10} {stats_fixed['stop']:<8.3%} "
+            f"{stats_fixed['sharpe']:<8.3f} {stats_fixed['return']:<8.2f}% "
+            f"{stats_fixed['trades']:<6}"
+        )
 
         # 2. Trailing Stop Loss
         pf_trail = vbt.Portfolio.from_signals(
@@ -406,7 +437,9 @@ def optimize_exits(
             short_entries=short_entries,
             short_exits=short_exits,
             sl_trail=sl,  # Trailing stop
-            init_cash=10_000, fees=0.0002, freq=freq
+            init_cash=10_000,
+            fees=0.0002,
+            freq=freq,
         )
         stats_trail = {
             "type": "Trailing",
@@ -416,9 +449,11 @@ def optimize_exits(
             "trades": int(pf_trail.trades.count()),
         }
         results.append(stats_trail)
-        print(f"  {stats_trail['type']:<10} {stats_trail['stop']:<8.3%} "
-              f"{stats_trail['sharpe']:<8.3f} {stats_trail['return']:<8.2f}% "
-              f"{stats_trail['trades']:<6}")
+        print(
+            f"  {stats_trail['type']:<10} {stats_trail['stop']:<8.3%} "
+            f"{stats_trail['sharpe']:<8.3f} {stats_trail['return']:<8.2f}% "
+            f"{stats_trail['trades']:<6}"
+        )
 
     # Find best
     if not results:
@@ -431,8 +466,12 @@ def optimize_exits(
 
 
 def backtest_ml_predictions(
-    model, X: pd.DataFrame, y: pd.Series, close: pd.Series,
-    split_pct: float = 0.70, freq: str = "4h",
+    model,
+    X: pd.DataFrame,
+    y: pd.Series,
+    close: pd.Series,
+    split_pct: float = 0.70,
+    freq: str = "4h",
 ):
     """Run IS/OOS backtest of the ML model's predictions via VBT."""
     if vbt is None:
@@ -461,8 +500,12 @@ def backtest_ml_predictions(
     short_exits = pd.Series(preds_oos != 0, index=close_oos.index)
 
     long_pf = vbt.Portfolio.from_signals(
-        close_oos, entries=long_entries, exits=long_exits,
-        init_cash=10_000, fees=0.0002, freq=freq,
+        close_oos,
+        entries=long_entries,
+        exits=long_exits,
+        init_cash=10_000,
+        fees=0.0002,
+        freq=freq,
     )
     short_pf = vbt.Portfolio.from_signals(
         close_oos,
@@ -470,12 +513,14 @@ def backtest_ml_predictions(
         exits=pd.Series(False, index=close_oos.index),
         short_entries=short_entries,
         short_exits=short_exits,
-        init_cash=10_000, fees=0.0002, freq=freq,
+        init_cash=10_000,
+        fees=0.0002,
+        freq=freq,
     )
 
-    print(f"\n  {'─'*60}")
+    print(f"\n  {'─' * 60}")
     print("  📈 VBT OOS Backtest (Base Signals)")
-    print(f"  {'─'*60}")
+    print(f"  {'─' * 60}")
 
     for label, pf in [("LONG", long_pf), ("SHORT", short_pf)]:
         ret = pf.total_return() * 100
@@ -483,8 +528,10 @@ def backtest_ml_predictions(
         dd = pf.max_drawdown() * 100
         trades = pf.trades.count()
         wr = pf.trades.win_rate() * 100 if trades > 0 else 0
-        print(f"    {label:6s}  Return={ret:>7.2f}%  Sharpe={sharpe:>7.3f}  "
-              f"MaxDD={dd:>6.2f}%  Trades={trades}  WR={wr:.1f}%")
+        print(
+            f"    {label:6s}  Return={ret:>7.2f}%  Sharpe={sharpe:>7.3f}  "
+            f"MaxDD={dd:>6.2f}%  Trades={trades}  WR={wr:.1f}%"
+        )
 
     # 2. Exit Optimization
     best_exit = optimize_exits(close_oos, preds_oos, freq=freq)
@@ -495,11 +542,12 @@ def backtest_ml_predictions(
 # Main Pipeline
 # ─────────────────────────────────────────────────────────────────────
 
+
 def run_pipeline(base_tf: str = "H4"):
     """Run the full ML pipeline for a specific base timeframe."""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  [INFO] ML Strategy Discovery — EUR_USD {base_tf}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     # ── Step 1: Load data ──
     print("\n  Step 1: Loading data...")
@@ -555,9 +603,11 @@ def run_pipeline(base_tf: str = "H4"):
     n_short = (target == 0).sum()
     n_flat = (target == 1).sum()
     print(f"    Final dataset: {len(feats)} rows × {feats.shape[1]} features")
-    print(f"    Target distribution:  LONG={n_long} ({n_long/len(target)*100:.1f}%)  "
-          f"SHORT={n_short} ({n_short/len(target)*100:.1f}%)  "
-          f"FLAT={n_flat} ({n_flat/len(target)*100:.1f}%)")
+    print(
+        f"    Target distribution:  LONG={n_long} ({n_long / len(target) * 100:.1f}%)  "
+        f"SHORT={n_short} ({n_short / len(target) * 100:.1f}%)  "
+        f"FLAT={n_flat} ({n_flat / len(target) * 100:.1f}%)"
+    )
 
     if len(feats) < 100:
         print("  ⚠ Not enough data to train. Skipping.")
@@ -567,9 +617,7 @@ def run_pipeline(base_tf: str = "H4"):
     print("\n  Step 4: Training ML models with walk-forward CV...")
 
     # Delegate to train_and_evaluate which handles the loop and best model selection
-    best_model, best_model_name, results, imp_df = train_and_evaluate(
-        feats, target, close_aligned
-    )
+    best_model, best_model_name, results, imp_df = train_and_evaluate(feats, target, close_aligned)
     best_model_score = results[best_model_name]["sharpe"]
 
     print(f"\n  [BEST] Best model selected: {best_model_name} (Sharpe={best_model_score:.3f})")
@@ -608,9 +656,9 @@ def run_pipeline(base_tf: str = "H4"):
         json.dump(report, f, indent=2)
     print(f"  [SAVE] Report saved → {report_path.name}")
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("  [DONE] ML Strategy Discovery Complete")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
 
 def main():
@@ -624,27 +672,30 @@ def main():
             if res:
                 results.append(res)
         except Exception as e:
-             print(f"  [ERROR] Error processing {tf}: {e}")
-             import traceback
-             traceback.print_exc()
+            print(f"  [ERROR] Error processing {tf}: {e}")
+            import traceback
 
-    print(f"\n{'='*60}")
+            traceback.print_exc()
+
+    print(f"\n{'=' * 60}")
     print("  Multi-Timeframe Scan Complete")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     print(f"  {'Timeframe':<10} {'Model':<18} {'Exit Type':<12} {'Stop':<8} {'Sharpe (OOS)':<12}")
-    print(f"  {'-'*60}")
+    print(f"  {'-' * 60}")
 
     for res in results:
-        exit_strat = res.get('best_exit', {})
+        exit_strat = res.get("best_exit", {})
         # Handle cases where best_exit might be empty or None
         if not exit_strat:
             continue
 
-        print(f"  {res['base_tf']:<10} {res['model']:<18} "
-              f"{exit_strat.get('type', 'N/A'):<12} "
-              f"{exit_strat.get('stop', 0):<8.1%} "
-              f"{exit_strat.get('sharpe', 0.0):<12.3f}")
+        print(
+            f"  {res['base_tf']:<10} {res['model']:<18} "
+            f"{exit_strat.get('type', 'N/A'):<12} "
+            f"{exit_strat.get('stop', 0):<8.1%} "
+            f"{exit_strat.get('sharpe', 0.0):<12.3f}"
+        )
 
 
 if __name__ == "__main__":

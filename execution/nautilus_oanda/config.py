@@ -4,7 +4,6 @@
 Configuration for the OANDA adapter.
 """
 
-
 from nautilus_trader.live.config import (
     InstrumentProviderConfig,
     LiveDataClientConfig,

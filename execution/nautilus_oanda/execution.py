@@ -35,10 +35,7 @@ class OandaExecutionClient(LiveExecutionClient):
     ):
         super().__init__(loop, config, msgbus, cache, clock)
         self._config = config
-        self._api = oandapyV20.API(
-            access_token=config.access_token,
-            environment=config.environment
-        )
+        self._api = oandapyV20.API(access_token=config.access_token, environment=config.environment)
         self._account_id = config.account_id
         self._stream_task: Optional[asyncio.Task] = None
 
@@ -111,15 +108,13 @@ class OandaExecutionClient(LiveExecutionClient):
         elif event_type == "ORDER_CANCEL":
             self._handle_cancel(data, client_order_id, venue_order_id)
         elif event_type == "ORDER_CREATE":
-            self._log.info(
-                f"Order created on OANDA: {venue_order_id} "
-                f"(client: {client_order_id})"
-            )
+            self._log.info(f"Order created on OANDA: {venue_order_id} (client: {client_order_id})")
         else:
             self._log.debug(f"Unhandled transaction type: {event_type}")
 
-    def _handle_fill(self, data: dict, client_order_id: ClientOrderId,
-                     venue_order_id: VenueOrderId) -> None:
+    def _handle_fill(
+        self, data: dict, client_order_id: ClientOrderId, venue_order_id: VenueOrderId
+    ) -> None:
         """Map an OANDA ORDER_FILL to a Nautilus OrderFilled event.
 
         Args:
@@ -145,8 +140,7 @@ class OandaExecutionClient(LiveExecutionClient):
         order = self._cache.order(client_order_id)
         if order is None:
             self._log.warning(
-                f"Received fill for unknown order {client_order_id}. "
-                f"Venue ID: {venue_order_id}"
+                f"Received fill for unknown order {client_order_id}. Venue ID: {venue_order_id}"
             )
             return
 
@@ -171,12 +165,12 @@ class OandaExecutionClient(LiveExecutionClient):
 
         self._msgbus.send(endpoint="ExecEngine.process", msg=fill)
         self._log.info(
-            f"ORDER_FILL: {instrument_id} {order.side.name} "
-            f"{units} @ {fill_price} (PnL: {pl})"
+            f"ORDER_FILL: {instrument_id} {order.side.name} {units} @ {fill_price} (PnL: {pl})"
         )
 
-    def _handle_cancel(self, data: dict, client_order_id: ClientOrderId,
-                       venue_order_id: VenueOrderId) -> None:
+    def _handle_cancel(
+        self, data: dict, client_order_id: ClientOrderId, venue_order_id: VenueOrderId
+    ) -> None:
         """Map an OANDA ORDER_CANCEL to a Nautilus OrderCanceled event.
 
         Args:
@@ -189,9 +183,7 @@ class OandaExecutionClient(LiveExecutionClient):
 
         order = self._cache.order(client_order_id)
         if order is None:
-            self._log.warning(
-                f"Received cancel for unknown order {client_order_id}."
-            )
+            self._log.warning(f"Received cancel for unknown order {client_order_id}.")
             return
 
         canceled = OrderCanceled(
@@ -206,9 +198,7 @@ class OandaExecutionClient(LiveExecutionClient):
         )
 
         self._msgbus.send(endpoint="ExecEngine.process", msg=canceled)
-        self._log.info(
-            f"ORDER_CANCEL: {client_order_id} reason={reason}"
-        )
+        self._log.info(f"ORDER_CANCEL: {client_order_id} reason={reason}")
 
     async def submit_order(self, order: Order):
         """Submit an order to OANDA."""
@@ -222,9 +212,7 @@ class OandaExecutionClient(LiveExecutionClient):
             # The OANDA API request is blocking. We offload it to the executor
             # to avoid blocking the main asyncio event loop, which would freeze
             # the entire trading node.
-            response = await self._loop.run_in_executor(
-                None, lambda: self._api.request(r)
-            )
+            response = await self._loop.run_in_executor(None, lambda: self._api.request(r))
             self._log.info(f"Order submitted: {response}")
             # Note: NautilusTrader core usually generates the OrderSubmitted event
             # upon successful return from this method.
@@ -269,13 +257,13 @@ class OandaExecutionClient(LiveExecutionClient):
                     # Nautilus order instance.
                     "id": str(order.client_order_id),
                     "tag": "nautilus",
-                }
+                },
             }
         }
 
         if price:
             data["order"]["price"] = price
-            data["order"]["timeInForce"] = "GTC" # Limit orders usually GTC
+            data["order"]["timeInForce"] = "GTC"  # Limit orders usually GTC
 
         return data
 
@@ -293,8 +281,7 @@ class OandaExecutionClient(LiveExecutionClient):
         order = self._cache.order(command.client_order_id)
         if order is None or order.venue_order_id is None:
             self._log.error(
-                f"Cannot cancel — order not found or no venue ID: "
-                f"{command.client_order_id}"
+                f"Cannot cancel — order not found or no venue ID: {command.client_order_id}"
             )
             return
 
@@ -302,13 +289,7 @@ class OandaExecutionClient(LiveExecutionClient):
         r = orders.OrderCancel(self._account_id, oanda_order_id)
 
         try:
-            response = await self._loop.run_in_executor(
-                None, lambda: self._api.request(r)
-            )
-            self._log.info(
-                f"Cancel request sent for {oanda_order_id}: {response}"
-            )
+            response = await self._loop.run_in_executor(None, lambda: self._api.request(r))
+            self._log.info(f"Cancel request sent for {oanda_order_id}: {response}")
         except Exception as e:
-            self._log.error(
-                f"Cancel request failed for {oanda_order_id}: {e}"
-            )
+            self._log.error(f"Cancel request failed for {oanda_order_id}: {e}")

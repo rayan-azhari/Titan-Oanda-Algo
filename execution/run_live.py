@@ -91,8 +91,9 @@ def main() -> None:
     # Main trading loop (placeholder — extend with real signal generation)
     # -----------------------------------------------------------------------
     logger.info("Entering main loop. Press Ctrl+C to stop.")
-    logger.info(f"Rate limiter active: API={api_limiter.capacity}/s, "
-                f"Orders={order_limiter.capacity}/s")
+    logger.info(
+        f"Rate limiter active: API={api_limiter.capacity}/s, Orders={order_limiter.capacity}/s"
+    )
     try:
         while True:
             # TODO: Implement real-time signal generation

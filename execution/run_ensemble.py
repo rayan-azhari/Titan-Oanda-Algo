@@ -31,6 +31,7 @@ REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 # Configuration
 # ---------------------------------------------------------------------------
 
+
 def load_ensemble_config() -> dict:
     """Load ensemble configuration from config/ensemble.toml."""
     config_path = PROJECT_ROOT / "config" / "ensemble.toml"
@@ -44,6 +45,7 @@ def load_ensemble_config() -> dict:
 # ---------------------------------------------------------------------------
 # Strategy loading
 # ---------------------------------------------------------------------------
+
 
 class Strategy:
     """Represents a single strategy in the ensemble.
@@ -94,10 +96,10 @@ class Strategy:
 
         # Convert binary classification to directional signal
         if signal == 1:
-            return 1   # Buy
+            return 1  # Buy
         elif signal == 0:
             return -1  # Sell
-        return 0       # Hold
+        return 0  # Hold
 
     @property
     def is_active(self) -> bool:
@@ -126,12 +128,14 @@ def load_strategies() -> list[Strategy]:
             with open(strategy_config_path, "rb") as f:
                 strat_config = tomllib.load(f)
 
-        strategies.append(Strategy(
-            name=strat_cfg["name"],
-            model_path=model_path,
-            weight=strat_cfg.get("weight", 0.0),
-            config=strat_config,
-        ))
+        strategies.append(
+            Strategy(
+                name=strat_cfg["name"],
+                model_path=model_path,
+                weight=strat_cfg.get("weight", 0.0),
+                config=strat_config,
+            )
+        )
 
     return strategies
 
@@ -139,6 +143,7 @@ def load_strategies() -> list[Strategy]:
 # ---------------------------------------------------------------------------
 # Ensemble logic
 # ---------------------------------------------------------------------------
+
 
 def compute_correlation_matrix(signal_history: dict[str, list[int]]) -> pd.DataFrame:
     """Compute pairwise correlation between strategy signals.
@@ -183,8 +188,7 @@ def rebalance_weights(
                 if i >= j:
                     continue
                 if abs(corr.iloc[i, j]) > correlation_threshold:
-                    print(f"  ⚠️  High correlation ({corr.iloc[i, j]:.2f}) "
-                          f"between {s1} and {s2}")
+                    print(f"  ⚠️  High correlation ({corr.iloc[i, j]:.2f}) between {s1} and {s2}")
                     # Reduce the lower-weight strategy
                     if weights.get(s1, Decimal("0")) < weights.get(s2, Decimal("0")):
                         weights[s1] = weights.get(s1, Decimal("0")) * Decimal("0.5")
@@ -229,11 +233,11 @@ def ensemble_signal(
 
     # Threshold: need >0.3 weighted consensus to trade
     if weighted_sum > Decimal("0.3"):
-        ensemble = 1   # Buy
+        ensemble = 1  # Buy
     elif weighted_sum < Decimal("-0.3"):
         ensemble = -1  # Sell
     else:
-        ensemble = 0   # Hold
+        ensemble = 0  # Hold
 
     return ensemble, individual_signals
 
@@ -241,6 +245,7 @@ def ensemble_signal(
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     """Run the ensemble framework in analysis mode."""
@@ -254,8 +259,7 @@ def main() -> None:
 
     min_strats = ensemble_cfg.get("min_strategies", 2)
     if len(active) < min_strats:
-        print(f"\n⚠️  Only {len(active)} active strategies "
-              f"(minimum {min_strats} required).")
+        print(f"\n⚠️  Only {len(active)} active strategies (minimum {min_strats} required).")
         print("   Train more strategy models before using the ensemble.\n")
         print("   Registered strategies:")
         for strat_cfg in config.get("strategies", []):

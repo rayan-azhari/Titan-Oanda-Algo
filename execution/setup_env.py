@@ -49,13 +49,15 @@ def main() -> None:
     ]
 
     if slack_url:
-        lines.extend([
-            "# ──────────────────────────────────────────────────────────",
-            "# Slack Notifications (Guardian Agent)",
-            "# ──────────────────────────────────────────────────────────",
-            f"SLACK_WEBHOOK_URL={slack_url}",
-            "",
-        ])
+        lines.extend(
+            [
+                "# ──────────────────────────────────────────────────────────",
+                "# Slack Notifications (Guardian Agent)",
+                "# ──────────────────────────────────────────────────────────",
+                f"SLACK_WEBHOOK_URL={slack_url}",
+                "",
+            ]
+        )
 
     ENV_FILE.write_text("\n".join(lines), encoding="utf-8")
     print(f"\n  ✓ Created {ENV_FILE}")

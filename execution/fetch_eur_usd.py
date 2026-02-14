@@ -47,6 +47,7 @@ LOOKBACK_DAYS = 365
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def fetch_candles_page(
     client: oandapyV20.API,
     instrument: str,
@@ -75,7 +76,7 @@ def fetch_candles_page(
             return response.get("candles", [])
         except oandapyV20.exceptions.V20Error as e:
             if "429" in str(e):
-                wait = 2 ** attempt
+                wait = 2**attempt
                 print(f"  ⏳ Rate limited. Retrying in {wait}s...")
                 time.sleep(wait)
             else:
@@ -99,7 +100,9 @@ def fetch_all_candles(
     while True:
         page += 1
         candles = fetch_candles_page(
-            client, instrument, granularity,
+            client,
+            instrument,
+            granularity,
             from_time=current_from,
         )
 
@@ -107,8 +110,10 @@ def fetch_all_candles(
             break
 
         all_candles.extend(candles)
-        print(f"    Page {page}: {len(candles)} candles "
-              f"({candles[0]['time'][:10]} → {candles[-1]['time'][:10]})")
+        print(
+            f"    Page {page}: {len(candles)} candles "
+            f"({candles[0]['time'][:10]} → {candles[-1]['time'][:10]})"
+        )
 
         # Stop if the last candle is past our end date
         last_time = candles[-1]["time"]
@@ -139,14 +144,16 @@ def candles_to_dataframe(candles: list[dict]) -> pd.DataFrame:
         if not c.get("complete", False):
             continue
         bid = c["bid"]
-        rows.append({
-            "timestamp": pd.Timestamp(c["time"]),
-            "open": Decimal(bid["o"]),
-            "high": Decimal(bid["h"]),
-            "low": Decimal(bid["l"]),
-            "close": Decimal(bid["c"]),
-            "volume": int(c["volume"]),
-        })
+        rows.append(
+            {
+                "timestamp": pd.Timestamp(c["time"]),
+                "open": Decimal(bid["o"]),
+                "high": Decimal(bid["h"]),
+                "low": Decimal(bid["l"]),
+                "close": Decimal(bid["c"]),
+                "volume": int(c["volume"]),
+            }
+        )
 
     df = pd.DataFrame(rows)
     if not df.empty:
@@ -157,6 +164,7 @@ def candles_to_dataframe(candles: list[dict]) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     """Download 1 year of EUR/USD data for all configured granularities."""

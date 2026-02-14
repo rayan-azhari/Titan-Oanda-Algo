@@ -90,9 +90,7 @@ def atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
     return tr.rolling(window=period).mean()
 
 
-def macd(
-    series: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9
-) -> pd.DataFrame:
+def macd(series: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9) -> pd.DataFrame:
     """MACD indicator: line, signal, and histogram.
 
     Args:
@@ -109,14 +107,10 @@ def macd(
     macd_line = ema_fast - ema_slow
     signal_line = ema(macd_line, signal)
     histogram = macd_line - signal_line
-    return pd.DataFrame(
-        {"macd": macd_line, "macd_signal": signal_line, "macd_hist": histogram}
-    )
+    return pd.DataFrame({"macd": macd_line, "macd_signal": signal_line, "macd_hist": histogram})
 
 
-def bollinger_bandwidth(
-    series: pd.Series, period: int = 20, std_dev: float = 2.0
-) -> pd.Series:
+def bollinger_bandwidth(series: pd.Series, period: int = 20, std_dev: float = 2.0) -> pd.Series:
     """Bollinger Bandwidth (normalised).
 
     Args:
@@ -208,15 +202,24 @@ def build_feature_matrix(
 
     # --- Multi-timeframe confluence features (if available) ---
     # These are pre-computed by mtf_confluence.py and aligned to H1 timeline.
-    mtf_cols = ["h1_bias", "h4_bias", "d_bias", "confluence_score",
-                "all_bullish", "all_bearish", "signal"]
+    mtf_cols = [
+        "h1_bias",
+        "h4_bias",
+        "d_bias",
+        "confluence_score",
+        "all_bullish",
+        "all_bearish",
+        "signal",
+    ]
     if mtf_features is not None and not mtf_features.empty:
         for col in mtf_cols:
             if col in mtf_features.columns:
                 aligned = mtf_features[col].reindex(features.index, method="ffill")
                 features[f"mtf_{col}"] = aligned
-        print(f"    Added {sum(1 for c in mtf_cols if c in mtf_features.columns)} "
-              "MTF confluence features.")
+        print(
+            f"    Added {sum(1 for c in mtf_cols if c in mtf_features.columns)} "
+            "MTF confluence features."
+        )
 
     # --- Target vector (shifted backward by 1 to prevent look-ahead) ---
     # y[t] = 1 if close[t+1] > close[t], else 0

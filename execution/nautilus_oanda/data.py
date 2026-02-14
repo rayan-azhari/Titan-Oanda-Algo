@@ -32,10 +32,7 @@ class OandaDataClient(LiveDataClient):
     ):
         super().__init__(loop, config, msgbus, cache, clock)
         self._config = config
-        self._api = oandapyV20.API(
-            access_token=config.access_token,
-            environment=config.environment
-        )
+        self._api = oandapyV20.API(access_token=config.access_token, environment=config.environment)
         self._account_id = config.account_id
         self._stream_task: Optional[asyncio.Task] = None
         self._subscribed_instruments = set()
@@ -115,15 +112,12 @@ class OandaDataClient(LiveDataClient):
         while self._connected:
             # Convert InstrumentIds back to OANDA format (EUR_USD)
             instruments = [
-                inst.symbol.value.replace("/", "_")
-                for inst in self._subscribed_instruments
+                inst.symbol.value.replace("/", "_") for inst in self._subscribed_instruments
             ]
             params = {"instruments": ",".join(instruments)}
 
             try:
-                r = pricing.PricingStream(
-                    accountID=self._account_id, params=params
-                )
+                r = pricing.PricingStream(accountID=self._account_id, params=params)
                 self._log.info(
                     f"OANDA stream connecting for {len(instruments)} "
                     f"instrument(s)... (attempt {self._reconnect_count + 1})"
@@ -131,9 +125,7 @@ class OandaDataClient(LiveDataClient):
 
                 # The OANDA v20 client's stream request is a blocking
                 # generator.  Run in executor to avoid blocking the loop.
-                await self._loop.run_in_executor(
-                    None, self._consume_stream, r
-                )
+                await self._loop.run_in_executor(None, self._consume_stream, r)
 
                 # If _consume_stream returns cleanly, the stream ended.
                 # Reset counter (it was connected at some point).
@@ -150,8 +142,7 @@ class OandaDataClient(LiveDataClient):
             self._reconnect_count += 1
             if self._reconnect_count > max_attempts:
                 self._log.error(
-                    f"OANDA stream: exceeded {max_attempts} reconnect "
-                    f"attempts. Giving up."
+                    f"OANDA stream: exceeded {max_attempts} reconnect attempts. Giving up."
                 )
                 return
 
@@ -198,7 +189,7 @@ class OandaDataClient(LiveDataClient):
             ask_price=Price(ask, precision=None),
             bid_size=Quantity(bid_size, precision=0),
             ask_size=Quantity(ask_size, precision=0),
-            ts_event=timestamp.value, # Nanoseconds (uint64)
+            ts_event=timestamp.value,  # Nanoseconds (uint64)
             ts_init=self._clock.timestamp_ns(),
         )
 

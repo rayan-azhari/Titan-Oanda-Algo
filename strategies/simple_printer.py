@@ -12,6 +12,7 @@ from nautilus_trader.trading.strategy import Strategy
 
 class SimplePrinterConfig(StrategyConfig):
     """Configuration for SimplePrinter."""
+
     pass
 
 
@@ -38,8 +39,7 @@ class SimplePrinter(Strategy):
         # but for verification we want to see at least the first few immediately.
         if self._count <= 5 or self._count % 10 == 0:
             self.log.info(
-                f"[{self._count}] QUOTE {tick.instrument_id}: "
-                f"{tick.bid_price} / {tick.ask_price}"
+                f"[{self._count}] QUOTE {tick.instrument_id}: {tick.bid_price} / {tick.ask_price}"
             )
 
     def on_stop(self):

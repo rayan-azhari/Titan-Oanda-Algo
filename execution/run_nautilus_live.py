@@ -73,8 +73,7 @@ def main():
 
     if not account_id or not access_token:
         logger.error(
-            "OANDA credentials not found. "
-            "Set OANDA_ACCOUNT_ID and OANDA_ACCESS_TOKEN in .env."
+            "OANDA credentials not found. Set OANDA_ACCOUNT_ID and OANDA_ACCESS_TOKEN in .env."
         )
         sys.exit(1)
 
@@ -115,14 +114,22 @@ def main():
     node.add_data_client_factory(
         "OANDA",
         lambda loop, msgbus, cache, clock: OandaDataClient(
-            loop, data_config, msgbus, cache, clock,
+            loop,
+            data_config,
+            msgbus,
+            cache,
+            clock,
         ),
     )
 
     node.add_execution_client_factory(
         "OANDA",
         lambda loop, msgbus, cache, clock: OandaExecutionClient(
-            loop, exec_config, msgbus, cache, clock,
+            loop,
+            exec_config,
+            msgbus,
+            cache,
+            clock,
         ),
     )
 
@@ -134,8 +141,6 @@ def main():
 
     for inst in instruments:
         node.add_instrument(inst)
-
-
 
     # 5. Load Strategy
     print("🧠 Instantiate and register strategy...")
@@ -157,6 +162,7 @@ def main():
 
     # Run the node (blocking)
     node.run()
+
 
 if __name__ == "__main__":
     main()

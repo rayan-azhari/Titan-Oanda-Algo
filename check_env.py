@@ -1,10 +1,10 @@
-
 import os
 import platform
 import sys
 
 try:
     import nautilus_trader
+
     nautilus_version = nautilus_trader.__version__
     status = "SUCCESS"
 except ImportError as e:

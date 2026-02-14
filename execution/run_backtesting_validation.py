@@ -59,13 +59,15 @@ def load_parquet_for_backtesting(pair: str, granularity: str) -> pd.DataFrame:
     df = df.set_index("timestamp")
 
     # Convert to Backtesting.py naming convention
-    df = df.rename(columns={
-        "open": "Open",
-        "high": "High",
-        "low": "Low",
-        "close": "Close",
-        "volume": "Volume",
-    })
+    df = df.rename(
+        columns={
+            "open": "Open",
+            "high": "High",
+            "low": "Low",
+            "close": "Close",
+            "volume": "Volume",
+        }
+    )
 
     # Convert Decimal to float
     for col in ["Open", "High", "Low", "Close"]:

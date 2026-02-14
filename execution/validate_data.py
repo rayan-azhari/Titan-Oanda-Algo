@@ -21,6 +21,7 @@ RAW_DATA_DIR = PROJECT_ROOT / ".tmp" / "data" / "raw"
 # Validation checks
 # ---------------------------------------------------------------------------
 
+
 def check_duplicates(df: pd.DataFrame, name: str) -> int:
     """Check for duplicate timestamps.
 
@@ -136,6 +137,7 @@ def check_negative_volume(df: pd.DataFrame, name: str) -> int:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     """Validate all raw Parquet files in .tmp/data/raw/."""

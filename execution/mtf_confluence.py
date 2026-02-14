@@ -33,6 +33,7 @@ FEATURES_DIR.mkdir(parents=True, exist_ok=True)
 # Indicator helpers (lookback-only, no future data)
 # ---------------------------------------------------------------------------
 
+
 def compute_trend(close: pd.Series, fast: int = 20, slow: int = 50) -> pd.Series:
     """Compute trend direction from dual-MA crossover.
 
@@ -96,14 +97,15 @@ def compute_structure(high: pd.Series, low: pd.Series, period: int = 20) -> pd.S
     prev_lowest = lowest.shift(period)
 
     structure = pd.Series(0, index=high.index)
-    structure[(highest > prev_highest) & (lowest > prev_lowest)] = 1    # Uptrend
-    structure[(highest < prev_highest) & (lowest < prev_lowest)] = -1   # Downtrend
+    structure[(highest > prev_highest) & (lowest > prev_lowest)] = 1  # Uptrend
+    structure[(highest < prev_highest) & (lowest < prev_lowest)] = -1  # Downtrend
     return structure
 
 
 # ---------------------------------------------------------------------------
 # Timeframe signal builder
 # ---------------------------------------------------------------------------
+
 
 def build_timeframe_signal(df: pd.DataFrame, config: dict) -> pd.DataFrame:
     """Build directional signal components for a single timeframe.
@@ -171,22 +173,16 @@ def align_timeframes(
     w_d = weights.get("D", 0.4)
 
     confluence["confluence_score"] = (
-        confluence["h1_bias"] * w_h1 +
-        confluence["h4_bias"] * w_h4 +
-        confluence["d_bias"] * w_d
+        confluence["h1_bias"] * w_h1 + confluence["h4_bias"] * w_h4 + confluence["d_bias"] * w_d
     )
 
     # Agreement flag: all 3 same sign
     confluence["all_bullish"] = (
-        (confluence["h1_bias"] > 0) &
-        (confluence["h4_bias"] > 0) &
-        (confluence["d_bias"] > 0)
+        (confluence["h1_bias"] > 0) & (confluence["h4_bias"] > 0) & (confluence["d_bias"] > 0)
     ).astype(int)
 
     confluence["all_bearish"] = (
-        (confluence["h1_bias"] < 0) &
-        (confluence["h4_bias"] < 0) &
-        (confluence["d_bias"] < 0)
+        (confluence["h1_bias"] < 0) & (confluence["h4_bias"] < 0) & (confluence["d_bias"] < 0)
     ).astype(int)
 
     # Final signal: only trade with full confluence
@@ -200,6 +196,7 @@ def align_timeframes(
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
+
 
 def load_mtf_config() -> dict:
     """Load MTF configuration from config/mtf.toml."""
@@ -220,6 +217,7 @@ def load_mtf_config() -> dict:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def load_pair_data(pair: str, granularity: str) -> pd.DataFrame | None:
     """Load raw data for a pair/granularity if available.
@@ -256,8 +254,10 @@ def main() -> None:
 
     pairs = inst_config.get("instruments", {}).get("pairs", [])
     print("🔀 Multi-Timeframe Confluence Engine\n")
-    print(f"  Weights: H1={weights.get('H1', 0.2)}, "
-          f"H4={weights.get('H4', 0.4)}, D={weights.get('D', 0.4)}\n")
+    print(
+        f"  Weights: H1={weights.get('H1', 0.2)}, "
+        f"H4={weights.get('H4', 0.4)}, D={weights.get('D', 0.4)}\n"
+    )
 
     for pair in pairs:
         print(f"  ━━━ {pair} ━━━")
@@ -274,8 +274,10 @@ def main() -> None:
                 missing.append("H4")
             if d_df is None:
                 missing.append("D")
-            print(f"  ⚠️  Missing data: {', '.join(missing)}. "
-                  "Run download_oanda_data.py for all timeframes.\n")
+            print(
+                f"  ⚠️  Missing data: {', '.join(missing)}. "
+                "Run download_oanda_data.py for all timeframes.\n"
+            )
             continue
 
         # Build signals per timeframe
@@ -292,9 +294,9 @@ def main() -> None:
         bearish = (confluence["signal"] == -1).sum()
         neutral = total_bars - bullish - bearish
         print(f"    Total bars:  {total_bars}")
-        print(f"    📈 Bullish:  {bullish} ({bullish/total_bars*100:.1f}%)")
-        print(f"    📉 Bearish:  {bearish} ({bearish/total_bars*100:.1f}%)")
-        print(f"    ⏸️  Neutral:  {neutral} ({neutral/total_bars*100:.1f}%)")
+        print(f"    📈 Bullish:  {bullish} ({bullish / total_bars * 100:.1f}%)")
+        print(f"    📉 Bearish:  {bearish} ({bearish / total_bars * 100:.1f}%)")
+        print(f"    ⏸️  Neutral:  {neutral} ({neutral / total_bars * 100:.1f}%)")
 
         # Save confluence features
         out_path = FEATURES_DIR / f"{pair}_mtf_confluence.parquet"

@@ -21,8 +21,7 @@ class OandaInstrumentProvider:
     def __init__(self, config: OandaInstrumentProviderConfig):
         self._config = config
         self._client = oandapyV20.API(
-            access_token=config.access_token,
-            environment=config.environment
+            access_token=config.access_token, environment=config.environment
         )
         self._account_id = config.account_id
 

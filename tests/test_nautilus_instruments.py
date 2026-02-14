@@ -44,17 +44,13 @@ def test_instruments_loaded(instruments):
 
 def test_eur_usd_exists(instruments):
     """EUR/USD must be present in the instrument list."""
-    eur_usd = next(
-        (i for i in instruments if i.id.symbol.value == "EUR/USD"), None
-    )
+    eur_usd = next((i for i in instruments if i.id.symbol.value == "EUR/USD"), None)
     assert eur_usd is not None, "EUR/USD not found in instruments"
 
 
 def test_eur_usd_precision(instruments):
     """EUR/USD should have 5 decimal places."""
-    eur_usd = next(
-        (i for i in instruments if i.id.symbol.value == "EUR/USD"), None
-    )
+    eur_usd = next((i for i in instruments if i.id.symbol.value == "EUR/USD"), None)
     if eur_usd is None:
         pytest.skip("EUR/USD not available")
     assert eur_usd.price_precision == 5
@@ -62,9 +58,7 @@ def test_eur_usd_precision(instruments):
 
 def test_lot_size(instruments):
     """OANDA allows unit-level trading — lot_size should be 1."""
-    eur_usd = next(
-        (i for i in instruments if i.id.symbol.value == "EUR/USD"), None
-    )
+    eur_usd = next((i for i in instruments if i.id.symbol.value == "EUR/USD"), None)
     if eur_usd is None:
         pytest.skip("EUR/USD not available")
     assert eur_usd.lot_size.as_double() == 1.0

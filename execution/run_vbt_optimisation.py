@@ -40,8 +40,14 @@ from execution.spread_model import build_spread_series
 # Mapping OANDA granularity codes to pandas frequency strings.
 # VBT needs this to calculate annualised Sharpe ratios.
 GRAN_TO_FREQ: dict[str, str] = {
-    "M1": "1min", "M5": "5min", "M15": "15min", "M30": "30min",
-    "H1": "1h", "H4": "4h", "D": "1D", "W": "1W",
+    "M1": "1min",
+    "M5": "5min",
+    "M15": "15min",
+    "M30": "30min",
+    "H1": "1h",
+    "H4": "4h",
+    "D": "1D",
+    "W": "1W",
 }
 
 
@@ -103,7 +109,9 @@ def split_in_out_of_sample(
 
 
 def run_rsi_optimisation(
-    close: pd.Series, rsi_windows: list[int], entry_thresholds: list[int],
+    close: pd.Series,
+    rsi_windows: list[int],
+    entry_thresholds: list[int],
     fees: float = 0.0003,
 ):
     """Run parameterised RSI strategy optimisation.
@@ -135,9 +143,7 @@ def run_rsi_optimisation(
     return portfolio
 
 
-def generate_sharpe_heatmap(
-    sharpe_df: pd.DataFrame, pair: str, label: str = "IS"
-) -> Path:
+def generate_sharpe_heatmap(sharpe_df: pd.DataFrame, pair: str, label: str = "IS") -> Path:
     """Generate and save a Sharpe Ratio heatmap using plotly.
 
     Args:
@@ -148,13 +154,15 @@ def generate_sharpe_heatmap(
     Returns:
         Path to the saved heatmap HTML file.
     """
-    fig = go.Figure(data=go.Heatmap(
-        z=sharpe_df.values,
-        x=[str(c) for c in sharpe_df.columns],
-        y=[str(r) for r in sharpe_df.index],
-        colorscale="RdYlGn",
-        colorbar=dict(title="Sharpe"),
-    ))
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=sharpe_df.values,
+            x=[str(c) for c in sharpe_df.columns],
+            y=[str(r) for r in sharpe_df.index],
+            colorscale="RdYlGn",
+            colorbar=dict(title="Sharpe"),
+        )
+    )
     fig.update_layout(
         title=f"Sharpe Ratio Heatmap — {pair} ({label})",
         xaxis_title="RSI Entry Threshold",
@@ -199,17 +207,19 @@ def find_plateau_candidates(sharpe_2d: pd.DataFrame, top_n: int = 5) -> pd.DataF
     for i in range(1, sharpe_2d.shape[0] - 1):
         for j in range(1, sharpe_2d.shape[1] - 1):
             centre = sharpe_2d.iloc[i, j]
-            neighbours = sharpe_2d.iloc[i-1:i+2, j-1:j+2].values.flatten()
+            neighbours = sharpe_2d.iloc[i - 1 : i + 2, j - 1 : j + 2].values.flatten()
             neighbour_avg = np.mean(neighbours)
             neighbour_min = np.min(neighbours)
-            scores.append({
-                "rsi_window": sharpe_2d.index[i],
-                "entry_threshold": sharpe_2d.columns[j],
-                "sharpe": centre,
-                "neighbour_avg": neighbour_avg,
-                "neighbour_min": neighbour_min,
-                "stability_score": neighbour_min,  # Worst neighbour = robustness
-            })
+            scores.append(
+                {
+                    "rsi_window": sharpe_2d.index[i],
+                    "entry_threshold": sharpe_2d.columns[j],
+                    "sharpe": centre,
+                    "neighbour_avg": neighbour_avg,
+                    "neighbour_min": neighbour_min,
+                    "stability_score": neighbour_min,  # Worst neighbour = robustness
+                }
+            )
 
     results = pd.DataFrame(scores)
     if results.empty:
@@ -224,13 +234,13 @@ def main() -> None:
     granularity = config.get("instruments", {}).get("granularities", ["H4"])[0]
 
     # Parameter ranges for RSI strategy (swing trading)
-    rsi_windows = list(range(10, 30))         # RSI 10–29
-    entry_thresholds = list(range(20, 40))    # Entry at RSI 20–39
+    rsi_windows = list(range(10, 30))  # RSI 10–29
+    entry_thresholds = list(range(20, 40))  # Entry at RSI 20–39
 
     for pair in pairs:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"🔬 Optimising {pair} ({granularity})")
-        print(f"{'='*60}\n")
+        print(f"{'=' * 60}\n")
 
         df = load_raw_data(pair, granularity)
         if df is None:
@@ -240,7 +250,7 @@ def main() -> None:
         # Calculate session-weighted average spread for this pair
         spread_series = build_spread_series(df, pair)
         avg_spread = float(spread_series.mean())
-        print(f"  📊 Using session-weighted spread: {avg_spread*10000:.1f} pips\n")
+        print(f"  📊 Using session-weighted spread: {avg_spread * 10000:.1f} pips\n")
 
         # --- In-Sample Optimisation ---
         print("  ▶ In-Sample Optimisation...")
@@ -259,8 +269,10 @@ def main() -> None:
 
         print("\n  🏆 Top IS Plateau Candidates:")
         for _, row in candidates.iterrows():
-            print(f"     RSI({int(row['rsi_window'])}) < {int(row['entry_threshold'])}"
-                  f"  Sharpe={row['sharpe']:.3f}  NeighMin={row['neighbour_min']:.3f}")
+            print(
+                f"     RSI({int(row['rsi_window'])}) < {int(row['entry_threshold'])}"
+                f"  Sharpe={row['sharpe']:.3f}  NeighMin={row['neighbour_min']:.3f}"
+            )
 
         # --- Out-of-Sample Validation ---
         print("\n  ▶ Out-of-Sample Validation...")
@@ -280,8 +292,9 @@ def main() -> None:
             oos_val = oos_sharpe_2d.loc[w, t]
             ratio = oos_val / is_val if is_val != 0 else 0
             status = "✓ PASS" if ratio >= 0.5 else "✗ OVERFIT"
-            print(f"     RSI({w})<{t}: IS={is_val:.3f} OOS={oos_val:.3f} "
-                  f"Ratio={ratio:.2f} {status}")
+            print(
+                f"     RSI({w})<{t}: IS={is_val:.3f} OOS={oos_val:.3f} Ratio={ratio:.2f} {status}"
+            )
 
     print("\n✅ VBT optimisation complete.")
     print("   Transfer validated results to config/strategy_config.toml.\n")

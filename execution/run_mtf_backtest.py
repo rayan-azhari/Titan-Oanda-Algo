@@ -41,6 +41,7 @@ from execution.spread_model import build_spread_series
 # Config loaders
 # ─────────────────────────────────────────────────────────────────────
 
+
 def load_mtf_config() -> dict:
     """Load multi-timeframe confluence config from config/mtf.toml."""
     path = PROJECT_ROOT / "config" / "mtf.toml"
@@ -65,6 +66,7 @@ def load_data(pair: str, granularity: str) -> pd.DataFrame | None:
 # ─────────────────────────────────────────────────────────────────────
 # Indicator computation
 # ─────────────────────────────────────────────────────────────────────
+
 
 def compute_rsi(close: pd.Series, period: int = 14) -> pd.Series:
     """Compute RSI from a close price series."""
@@ -114,6 +116,7 @@ def compute_timeframe_signal(
 # ─────────────────────────────────────────────────────────────────────
 # MTF confluence
 # ─────────────────────────────────────────────────────────────────────
+
 
 def compute_confluence_score(
     pair: str,
@@ -176,9 +179,11 @@ def compute_confluence_score(
         # Stats
         bullish_pct = (signal > 0).mean() * 100
         bearish_pct = (signal < 0).mean() * 100
-        print(f"    {tf:3s} (w={weight:.2f}):  "
-              f"bullish {bullish_pct:.0f}% | bearish {bearish_pct:.0f}% | "
-              f"{len(df)} bars")
+        print(
+            f"    {tf:3s} (w={weight:.2f}):  "
+            f"bullish {bullish_pct:.0f}% | bearish {bearish_pct:.0f}% | "
+            f"{len(df)} bars"
+        )
 
     if not weighted_signals:
         print("  ERROR: No valid timeframe signals computed.")
@@ -197,6 +202,7 @@ def compute_confluence_score(
 # ─────────────────────────────────────────────────────────────────────
 # Backtest
 # ─────────────────────────────────────────────────────────────────────
+
 
 def run_backtest(
     close: pd.Series,
@@ -275,9 +281,9 @@ def print_portfolio_stats(label: str, pf, period: str = "") -> dict:
     total_trades = pf.trades.count()
     win_rate = pf.trades.win_rate() * 100 if total_trades > 0 else 0
 
-    print(f"\n  {'─'*50}")
+    print(f"\n  {'─' * 50}")
     print(f"  📊 {label} {period}")
-    print(f"  {'─'*50}")
+    print(f"  {'─' * 50}")
     print(f"    Total Return:  {total_return:>8.2f}%")
     print(f"    Sharpe Ratio:  {sharpe:>8.3f}")
     print(f"    Max Drawdown:  {max_dd:>8.2f}%")
@@ -302,7 +308,8 @@ def generate_confluence_chart(
 ) -> Path:
     """Generate an interactive chart showing price + confluence score."""
     fig = make_subplots(
-        rows=2, cols=1,
+        rows=2,
+        cols=1,
         shared_xaxes=True,
         row_heights=[0.7, 0.3],
         vertical_spacing=0.05,
@@ -310,25 +317,42 @@ def generate_confluence_chart(
 
     # Price
     fig.add_trace(
-        go.Scatter(x=close.index, y=close.values, name="Close",
-                   line=dict(color="#2196F3", width=1)),
-        row=1, col=1,
+        go.Scatter(
+            x=close.index, y=close.values, name="Close", line=dict(color="#2196F3", width=1)
+        ),
+        row=1,
+        col=1,
     )
 
     # Confluence score
-    colors = np.where(confluence >= threshold, "#4CAF50",
-             np.where(confluence <= -threshold, "#F44336", "#9E9E9E"))
+    colors = np.where(
+        confluence >= threshold, "#4CAF50", np.where(confluence <= -threshold, "#F44336", "#9E9E9E")
+    )
     fig.add_trace(
-        go.Bar(x=confluence.index, y=confluence.values, name="Confluence",
-               marker_color=colors.tolist()),
-        row=2, col=1,
+        go.Bar(
+            x=confluence.index, y=confluence.values, name="Confluence", marker_color=colors.tolist()
+        ),
+        row=2,
+        col=1,
     )
 
     # Threshold lines
-    fig.add_hline(y=threshold, line_dash="dash", line_color="green",
-                  annotation_text="Long threshold", row=2, col=1)
-    fig.add_hline(y=-threshold, line_dash="dash", line_color="red",
-                  annotation_text="Short threshold", row=2, col=1)
+    fig.add_hline(
+        y=threshold,
+        line_dash="dash",
+        line_color="green",
+        annotation_text="Long threshold",
+        row=2,
+        col=1,
+    )
+    fig.add_hline(
+        y=-threshold,
+        line_dash="dash",
+        line_color="red",
+        annotation_text="Short threshold",
+        row=2,
+        col=1,
+    )
     fig.add_hline(y=0, line_dash="dot", line_color="gray", row=2, col=1)
 
     fig.update_layout(
@@ -350,18 +374,19 @@ def generate_confluence_chart(
 # Main
 # ─────────────────────────────────────────────────────────────────────
 
+
 def main() -> None:
     """Run the MTF confluence backtest with IS/OOS validation."""
     pair = "EUR_USD"
     mtf_config = load_mtf_config()
     threshold = mtf_config.get("confirmation_threshold", 0.30)
     # Only keep actual timeframe keys from the weights section
-    valid_tfs = {"M1","M5","M15","M30","H1","H2","H4","H8","D","W","M"}
+    valid_tfs = {"M1", "M5", "M15", "M30", "H1", "H2", "H4", "H8", "D", "W", "M"}
     timeframes = [k for k in mtf_config.get("weights", {}).keys() if k in valid_tfs]
 
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"  🔬 MTF Confluence Backtest — {pair}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"  Timeframes: {', '.join(timeframes)}")
     print(f"  Threshold:  ±{threshold}")
     print("  Direction:  LONG + SHORT")
@@ -373,7 +398,7 @@ def main() -> None:
     # ── Spread-based cost estimation ──
     spread_series = build_spread_series(primary_df, pair)
     avg_spread = float(spread_series.mean())
-    print(f"\n  💰 Avg session-weighted spread: {avg_spread*10000:.1f} pips")
+    print(f"\n  💰 Avg session-weighted spread: {avg_spread * 10000:.1f} pips")
 
     # ── IS / OOS Split (70/30) ──
     split_idx = int(len(close) * 0.70)
@@ -383,24 +408,28 @@ def main() -> None:
     oos_conf = confluence.iloc[split_idx:]
 
     print("\n  📐 Data split:")
-    print(f"     IS:  {len(is_close)} bars "
-          f"({is_close.index.min().date()} → {is_close.index.max().date()})")
-    print(f"     OOS: {len(oos_close)} bars "
-          f"({oos_close.index.min().date()} → {oos_close.index.max().date()})")
+    print(
+        f"     IS:  {len(is_close)} bars "
+        f"({is_close.index.min().date()} → {is_close.index.max().date()})"
+    )
+    print(
+        f"     OOS: {len(oos_close)} bars "
+        f"({oos_close.index.min().date()} → {oos_close.index.max().date()})"
+    )
 
     # ── Signal analysis ──
     long_signals = (confluence >= threshold).sum()
     short_signals = (confluence <= -threshold).sum()
     neutral = len(confluence) - long_signals - short_signals
     print("\n  📡 Signal distribution (full period):")
-    print(f"     Long:    {long_signals:>5d} bars ({long_signals/len(confluence)*100:.1f}%)")
-    print(f"     Short:   {short_signals:>5d} bars ({short_signals/len(confluence)*100:.1f}%)")
-    print(f"     Neutral: {neutral:>5d} bars ({neutral/len(confluence)*100:.1f}%)")
+    print(f"     Long:    {long_signals:>5d} bars ({long_signals / len(confluence) * 100:.1f}%)")
+    print(f"     Short:   {short_signals:>5d} bars ({short_signals / len(confluence) * 100:.1f}%)")
+    print(f"     Neutral: {neutral:>5d} bars ({neutral / len(confluence) * 100:.1f}%)")
 
     # ── In-Sample Backtest ──
-    print(f"\n{'─'*60}")
+    print(f"\n{'─' * 60}")
     print("  ▶ IN-SAMPLE BACKTEST")
-    print(f"{'─'*60}")
+    print(f"{'─' * 60}")
 
     is_results = run_backtest(is_close, is_conf, threshold, fees=avg_spread)
     is_long_stats = print_portfolio_stats("LONG", is_results["long"], "IN-SAMPLE")
@@ -414,9 +443,9 @@ def main() -> None:
     generate_confluence_chart(is_close, is_conf, threshold, pair, "IS")
 
     # ── Out-of-Sample Backtest ──
-    print(f"\n{'─'*60}")
+    print(f"\n{'─' * 60}")
     print("  ▶ OUT-OF-SAMPLE BACKTEST")
-    print(f"{'─'*60}")
+    print(f"{'─' * 60}")
 
     oos_results = run_backtest(oos_close, oos_conf, threshold, fees=avg_spread)
     oos_long_stats = print_portfolio_stats("LONG", oos_results["long"], "OUT-OF-SAMPLE")
@@ -429,12 +458,12 @@ def main() -> None:
     generate_confluence_chart(oos_close, oos_conf, threshold, pair, "OOS")
 
     # ── Parity Check ──
-    print(f"\n{'─'*60}")
+    print(f"\n{'─' * 60}")
     print("  ▶ IS vs OOS PARITY CHECK")
-    print(f"{'─'*60}")
+    print(f"{'─' * 60}")
 
     for label, is_s, oos_s in [
-        ("LONG",  is_long_stats,  oos_long_stats),
+        ("LONG", is_long_stats, oos_long_stats),
         ("SHORT", is_short_stats, oos_short_stats),
     ]:
         is_sharpe = is_s["sharpe"]
@@ -451,14 +480,16 @@ def main() -> None:
         else:
             status = "✗ OVERFIT"
 
-        print(f"    {label:6s}  IS Sharpe={is_sharpe:>7.3f}  "
-              f"OOS Sharpe={oos_sharpe:>7.3f}  "
-              f"Ratio={ratio:>6.2f}  {status}")
+        print(
+            f"    {label:6s}  IS Sharpe={is_sharpe:>7.3f}  "
+            f"OOS Sharpe={oos_sharpe:>7.3f}  "
+            f"Ratio={ratio:>6.2f}  {status}"
+        )
 
     # ── Final summary ──
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("  ✅ MTF Confluence Backtest Complete")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"  Reports: {REPORTS_DIR}")
     print()
 
