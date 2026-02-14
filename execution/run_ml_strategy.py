@@ -13,6 +13,7 @@ Directive: Machine Learning Strategy Discovery.md
 
 import json
 import sys
+import tomllib
 import warnings
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,6 +26,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 DATA_DIR = PROJECT_ROOT / "data"
+CONFIG_DIR = PROJECT_ROOT / "config"
 MODELS_DIR = PROJECT_ROOT / "models"
 REPORTS_DIR = PROJECT_ROOT / ".tmp" / "reports"
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
@@ -128,72 +130,171 @@ def adx(df, period=14):
 
 
 # ─────────────────────────────────────────────────────────────────────
+# Feature Config (from VBT Feature Selection)
+# ─────────────────────────────────────────────────────────────────────
+
+# Default params used when config/features.toml is missing.
+_DEFAULT_CFG = {
+    "trend": {
+        "sma_periods": [20, 50],
+        "ema_periods": [12, 26],
+        "macd": {"fast": 12, "slow": 26, "signal": 9},
+    },
+    "momentum": {
+        "rsi": {"window": 14, "entry": 30},
+        "stochastic": {"k": 14, "d": 3},
+    },
+    "volatility": {
+        "bollinger": {"window": 20, "std_dev": 2.0},
+        "adx": {"period": 14, "threshold": 25},
+    },
+    "mtf_confluence": {
+        "higher_tfs": ["D", "W"],
+        "D": {
+            "sma_fast": 10,
+            "sma_slow": 30,
+            "rsi_period": 14,
+            "rsi_threshold": 50,
+        },
+        "W": {
+            "sma_fast": 5,
+            "sma_slow": 13,
+            "rsi_period": 14,
+            "rsi_threshold": 50,
+        },
+    },
+}
+
+
+def load_feature_config() -> dict:
+    """Load tuned feature parameters from config/features.toml.
+
+    Falls back to hardcoded defaults if the file is missing,
+    ensuring backward compatibility.
+    """
+    cfg_path = CONFIG_DIR / "features.toml"
+    if cfg_path.exists():
+        with open(cfg_path, "rb") as f:
+            cfg = tomllib.load(f)
+        gen = cfg.get("selection", {}).get("generated_at", "unknown")
+        print(f"  📋 Loaded tuned features from features.toml ({gen})")
+        return cfg
+    print("  ⚠ config/features.toml not found — using defaults.")
+    print("    Run run_feature_selection.py to tune parameters.")
+    return _DEFAULT_CFG
+
+
+# ─────────────────────────────────────────────────────────────────────
 # Feature Engineering
 # ─────────────────────────────────────────────────────────────────────
 
 
-def build_features(df: pd.DataFrame, context_data: dict[str, pd.DataFrame]) -> pd.DataFrame:
-    """Build comprehensive feature matrix from base data and context data."""
+def build_features(
+    df: pd.DataFrame,
+    context_data: dict[str, pd.DataFrame],
+    cfg: dict | None = None,
+) -> pd.DataFrame:
+    """Build feature matrix using tuned parameters from config.
+
+    If cfg is None, loads config/features.toml automatically.
+    Falls back to hardcoded defaults if no config exists.
+    """
+    if cfg is None:
+        cfg = load_feature_config()
+
     close = df["close"]
     feats = pd.DataFrame(index=df.index)
+
+    # ── Config sections (with defaults) ──
+    trend = cfg.get("trend", _DEFAULT_CFG["trend"])
+    momentum = cfg.get("momentum", _DEFAULT_CFG["momentum"])
+    volatility = cfg.get("volatility", _DEFAULT_CFG["volatility"])
+    mtf_cfg = cfg.get("mtf_confluence", _DEFAULT_CFG["mtf_confluence"])
 
     # ── Lagged returns ──
     for lag in [1, 2, 3, 5, 10, 20]:
         feats[f"ret_{lag}"] = close.pct_change(lag)
 
-    # ── Trend ──
-    for p in [10, 20, 50]:
-        feats[f"sma_{p}"] = sma(close, p) / close - 1  # Normalised distance
-    feats["ema_slope"] = ema(close, 20).diff() / close  # Normalized EMA slope
-    feats["macd_hist"] = macd_hist(close)
-    feats["ma_cross_20_50"] = (sma(close, 20) > sma(close, 50)).astype(float)
+    # ── Trend (tuned) ──
+    sma_periods = trend.get("sma_periods", [20, 50])
+    for p in sma_periods:
+        feats[f"sma_{p}"] = sma(close, p) / close - 1
 
-    # ── Momentum ──
-    feats["rsi_14"] = rsi(close, 14)
-    feats["rsi_7"] = rsi(close, 7)
-    stoch_k, stoch_d = stochastic(df)
+    ema_periods = trend.get("ema_periods", [12, 26])
+    feats["ema_slope"] = ema(close, ema_periods[0]).diff() / close
+
+    macd_cfg = trend.get("macd", {"fast": 12, "slow": 26, "signal": 9})
+    feats["macd_hist"] = macd_hist(
+        close,
+        fast=macd_cfg["fast"],
+        slow=macd_cfg["slow"],
+        sig=macd_cfg["signal"],
+    )
+
+    # MA crossover (fast vs slow from SMA tuning)
+    if len(sma_periods) >= 2:
+        feats["ma_cross"] = (sma(close, sma_periods[0]) > sma(close, sma_periods[1])).astype(float)
+
+    # ── Momentum (tuned) ──
+    rsi_cfg = momentum.get("rsi", {"window": 14})
+    rsi_win = rsi_cfg.get("window", 14)
+    feats["rsi"] = rsi(close, rsi_win)
+    # Also include a shorter RSI for signal diversity
+    feats["rsi_fast"] = rsi(close, max(5, rsi_win // 2))
+
+    stoch_cfg = momentum.get("stochastic", {"k": 14, "d": 3})
+    stoch_k, stoch_d = stochastic(
+        df,
+        k_period=stoch_cfg.get("k", 14),
+        d_period=stoch_cfg.get("d", 3),
+    )
     feats["stoch_k"] = stoch_k
     feats["stoch_d"] = stoch_d
 
-    # ── Volatility ──
-    feats["atr_14"] = atr(df, 14) / close  # Normalised ATR
-    feats["boll_bw"] = bollinger_bw(close)
+    # ── Volatility (tuned) ──
+    feats["atr_14"] = atr(df, 14) / close
+
+    bb_cfg = volatility.get("bollinger", {"window": 20, "std_dev": 2.0})
+    feats["boll_bw"] = bollinger_bw(close, p=bb_cfg.get("window", 20))
     feats["close_std_20"] = close.rolling(20).std() / close
-    feats["adx_14"] = adx(df, 14)
+
+    adx_cfg = volatility.get("adx", {"period": 14})
+    feats["adx"] = adx(df, period=adx_cfg.get("period", 14))
 
     # ── Volume ──
     feats["vol_ratio"] = df["volume"] / df["volume"].rolling(20).mean()
     feats["vol_change"] = df["volume"].pct_change()
     feats["vol_rsi"] = rsi(df["volume"], 14)
 
-    # ── Price action (simplified) ──
+    # ── Price action ──
     feats["range_pct"] = (df["high"] - df["low"]) / close
 
-    # ── MTF Confluence ──
-    # context_data keys: "H4", "D", "W" etc.
+    # ── MTF Confluence (tuned) ──
     for gran, context_df in context_data.items():
         prefix = gran.lower()
         ctx_close = context_df["close"]
 
-        # Compute directional bias on higher TF
-        fast = sma(ctx_close, 10 if gran == "D" else 5)
-        slow = sma(ctx_close, 30 if gran == "D" else 13)
-        r = rsi(ctx_close, 14)
+        # Load tuned params for this TF (or defaults)
+        tf_cfg = mtf_cfg.get(gran, {})
+        sf = tf_cfg.get("sma_fast", 10 if gran == "D" else 5)
+        ss = tf_cfg.get("sma_slow", 30 if gran == "D" else 13)
+        rp = tf_cfg.get("rsi_period", 14)
+        rt = tf_cfg.get("rsi_threshold", 50)
+
+        fast_ma = sma(ctx_close, sf)
+        slow_ma = sma(ctx_close, ss)
+        r = rsi(ctx_close, rp)
 
         bias = pd.Series(0.0, index=ctx_close.index)
-        bias += np.where(fast > slow, 0.5, -0.5)
-        bias += np.where(r > 50, 0.5, -0.5)
+        bias += np.where(fast_ma > slow_ma, 0.5, -0.5)
+        bias += np.where(r > rt, 0.5, -0.5)
 
-        # Reindex to base timeline via forward-fill
-        # Important: reindex using the base timeline
         bias_aligned = bias.reindex(feats.index, method="ffill")
         feats[f"{prefix}_bias"] = bias_aligned
 
-        # Trend strength
-        trend_str = ((fast - slow) / ctx_close).reindex(feats.index, method="ffill")
+        trend_str = ((fast_ma - slow_ma) / ctx_close).reindex(feats.index, method="ffill")
         feats[f"{prefix}_trend_str"] = trend_str
 
-        # RSI
         r_aligned = r.reindex(feats.index, method="ffill")
         feats[f"{prefix}_rsi"] = r_aligned
 

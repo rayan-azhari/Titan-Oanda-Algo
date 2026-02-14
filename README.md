@@ -180,6 +180,8 @@ If all pass locally with zero errors, CI will also pass.
 - [x] Multi-timeframe confluence signals (H1 + H4 + D + W)
 - [x] ML Strategy Discovery (XGBoost + Walk-Forward Validation)
 - [x] Dockerization for cloud deployment
+- [x] VBT → ML Feature Selection Bridge (auto-tune indicators, feed into ML)
+- [ ] Model → Live Engine Bridge (deploy .joblib models to NautilusTrader)
 - [ ] Configure Slack Alerts for live trading monitoring
 - [ ] VectorBT Pro upgrade for production-scale mining
 
