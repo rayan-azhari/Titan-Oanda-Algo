@@ -4,7 +4,6 @@
 Utilities for parsing OANDA API data into NautilusTrader objects.
 """
 
-from decimal import Decimal
 
 import pandas as pd
 from nautilus_trader.model.identifiers import InstrumentId, Symbol, Venue

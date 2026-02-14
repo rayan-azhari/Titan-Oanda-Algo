@@ -75,10 +75,10 @@ def main() -> None:
     logger = setup_logging(args.mode)
     risk_cfg = load_risk_config().get("risk", {})
     model_path = find_latest_model()
-    model = joblib.load(model_path)
+    _model = joblib.load(model_path)  # noqa: F841 — will be used for signal generation
 
     environment = "practice" if args.mode == "practice" else "live"
-    client = oandapyV20.API(access_token=ACCESS_TOKEN, environment=environment)
+    _client = oandapyV20.API(access_token=ACCESS_TOKEN, environment=environment)  # noqa: F841
 
     logger.info("=" * 50)
     logger.info(f"  TITAN TRADING ENGINE — {args.mode.upper()}")

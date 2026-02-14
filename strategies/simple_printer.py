@@ -37,7 +37,10 @@ class SimplePrinter(Strategy):
         # Log every 10th tick to avoid unexpected console flooding,
         # but for verification we want to see at least the first few immediately.
         if self._count <= 5 or self._count % 10 == 0:
-            self.log.info(f"[{self._count}] QUOTE {tick.instrument_id}: {tick.bid_price} / {tick.ask_price}")
+            self.log.info(
+                f"[{self._count}] QUOTE {tick.instrument_id}: "
+                f"{tick.bid_price} / {tick.ask_price}"
+            )
 
     def on_stop(self):
         """Called when the strategy stops."""

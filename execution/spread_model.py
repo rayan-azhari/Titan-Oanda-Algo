@@ -179,7 +179,7 @@ def generate_spread_report(pair: str, granularity: str) -> None:
     spread = build_spread_series(df, pair)
     total_cost = build_total_cost_series(df, pair)
 
-    close = df["close"].astype(float)
+    _close = df["close"].astype(float)  # noqa: F841
     spread_pips = spread * 10_000  # Convert to pips
     cost_pips = total_cost * 10_000
 

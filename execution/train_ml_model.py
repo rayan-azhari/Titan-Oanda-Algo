@@ -212,7 +212,10 @@ def main() -> None:
         joblib.dump(model, model_path)
         print(f"\n   💾 Model saved to {model_path} (Sharpe {avg_sharpe:.4f} ≥ {sharpe_threshold})")
     else:
-        print(f"\n   ⚠️  Sharpe {avg_sharpe:.4f} < {sharpe_threshold}. Model NOT saved. Iterate on features.")
+        print(
+            f"\n   ⚠️  Sharpe {avg_sharpe:.4f} < {sharpe_threshold}. "
+            "Model NOT saved. Iterate on features."
+        )
 
     # Save training report
     version = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")

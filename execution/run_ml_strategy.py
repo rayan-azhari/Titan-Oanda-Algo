@@ -78,12 +78,12 @@ def ema(s, p):
 def rsi(s, p=14):
     d = s.diff()
     g = d.where(d > 0, 0.0).rolling(p).mean()
-    l = (-d.where(d < 0, 0.0)).rolling(p).mean()
-    return 100 - (100 / (1 + g / l))
+    loss = (-d.where(d < 0, 0.0)).rolling(p).mean()
+    return 100 - (100 / (1 + g / loss))
 
 def atr(df, p=14):
-    h, l, c = df["high"], df["low"], df["close"]
-    tr = pd.concat([h - l, (h - c.shift(1)).abs(), (l - c.shift(1)).abs()], axis=1).max(axis=1)
+    h, low, c = df["high"], df["low"], df["close"]
+    tr = pd.concat([h - low, (h - c.shift(1)).abs(), (low - c.shift(1)).abs()], axis=1).max(axis=1)
     return tr.rolling(p).mean()
 
 def macd_hist(s, fast=12, slow=26, sig=9):
@@ -105,12 +105,12 @@ def stochastic(df, k_period=14, d_period=3):
 
 def adx(df, period=14):
     """Average Directional Index (simplified)."""
-    h, l, c = df["high"], df["low"], df["close"]
+    h, low, c = df["high"], df["low"], df["close"]
     plus_dm = h.diff()
-    minus_dm = -l.diff()
+    minus_dm = -low.diff()
     plus_dm = plus_dm.where((plus_dm > minus_dm) & (plus_dm > 0), 0.0)
     minus_dm = minus_dm.where((minus_dm > plus_dm) & (minus_dm > 0), 0.0)
-    tr = pd.concat([h - l, (h - c.shift(1)).abs(), (l - c.shift(1)).abs()], axis=1).max(axis=1)
+    tr = pd.concat([h - low, (h - c.shift(1)).abs(), (low - c.shift(1)).abs()], axis=1).max(axis=1)
     atr_v = tr.rolling(period).mean()
     plus_di = 100 * plus_dm.rolling(period).mean() / atr_v
     minus_di = 100 * minus_dm.rolling(period).mean() / atr_v
@@ -431,7 +431,8 @@ def optimize_exits(
 
 
 def backtest_ml_predictions(
-    model, X: pd.DataFrame, y: pd.Series, close: pd.Series, split_pct: float = 0.70, freq: str = "4h"
+    model, X: pd.DataFrame, y: pd.Series, close: pd.Series,
+    split_pct: float = 0.70, freq: str = "4h",
 ):
     """Run IS/OOS backtest of the ML model's predictions via VBT."""
     if vbt is None:
@@ -442,8 +443,8 @@ def backtest_ml_predictions(
 
     # Train on IS, predict on OOS
     X_is, X_oos = X.iloc[:split], X.iloc[split:]
-    close_is, close_oos = close.iloc[:split], close.iloc[split:]
-    y_is = y.iloc[:split]
+    _close_is, close_oos = close.iloc[:split], close.iloc[split:]
+    _y_is = y.iloc[:split]  # noqa: F841
 
     model.fit(X_is, y.iloc[:split])
     preds_oos = model.predict(X_oos)
@@ -502,7 +503,7 @@ def run_pipeline(base_tf: str = "H4"):
 
     # ── Step 1: Load data ──
     print("\n  Step 1: Loading data...")
-    data_dir = Path("data")
+    _data_dir = Path("data")  # noqa: F841
 
     # Load base timeframe
     df = load_ohlcv("EUR_USD", base_tf)
@@ -585,7 +586,8 @@ def run_pipeline(base_tf: str = "H4"):
 
     # ── Step 6: Save model ──
     version = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    model_path = Path("models") / f"ml_strategy_{base_tf}_{best_model_name.lower()}_{version}.joblib"
+    model_fname = f"ml_strategy_{base_tf}_{best_model_name.lower()}_{version}.joblib"
+    model_path = Path("models") / model_fname
     model_path.parent.mkdir(exist_ok=True)
     joblib.dump(best_model, model_path)
     print(f"\n  [SAVE] Model saved → {model_path.name}")

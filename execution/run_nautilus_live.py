@@ -72,7 +72,10 @@ def main():
     environment = os.getenv("OANDA_ENVIRONMENT", "practice")
 
     if not account_id or not access_token:
-        logger.error("OANDA credentials not found. Set OANDA_ACCOUNT_ID and OANDA_ACCESS_TOKEN in .env.")
+        logger.error(
+            "OANDA credentials not found. "
+            "Set OANDA_ACCOUNT_ID and OANDA_ACCESS_TOKEN in .env."
+        )
         sys.exit(1)
 
     logger.info("=" * 50)
@@ -111,12 +114,16 @@ def main():
 
     node.add_data_client_factory(
         "OANDA",
-        lambda loop, msgbus, cache, clock: OandaDataClient(loop, data_config, msgbus, cache, clock)
+        lambda loop, msgbus, cache, clock: OandaDataClient(
+            loop, data_config, msgbus, cache, clock,
+        ),
     )
 
     node.add_execution_client_factory(
         "OANDA",
-        lambda loop, msgbus, cache, clock: OandaExecutionClient(loop, exec_config, msgbus, cache, clock)
+        lambda loop, msgbus, cache, clock: OandaExecutionClient(
+            loop, exec_config, msgbus, cache, clock,
+        ),
     )
 
     # 4. Load Instruments

@@ -179,7 +179,7 @@ class OandaDataClient(LiveDataClient):
     def _parse_quote(self, data):
         """Parse JSON quote and publish QuoteTick."""
         # data example:
-        # {'type': 'PRICE', 'time': '2023-10-27T...', 'bids': [{'price': '1.05', 'liquidity': 1000000}], ...}
+        # data example: {'type': 'PRICE', 'bids': [{'price': '1.05', ...}], ...}
 
         instrument_id = parse_instrument_id(data["instrument"])
         timestamp = parse_datetime(data["time"])

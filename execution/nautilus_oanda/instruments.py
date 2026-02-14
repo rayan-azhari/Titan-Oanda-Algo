@@ -9,10 +9,8 @@ from typing import List
 
 import oandapyV20
 import oandapyV20.endpoints.accounts as accounts
-from nautilus_trader.model.currencies import Currency
 from nautilus_trader.model.identifiers import InstrumentId, Symbol, Venue
 from nautilus_trader.model.instruments.currency_pair import CurrencyPair
-from nautilus_trader.model.objects import Price, Quantity
 
 from .config import OandaInstrumentProviderConfig
 
@@ -53,16 +51,11 @@ class OandaInstrumentProvider:
             display_precision = inst["displayPrecision"]
             tick_size = Decimal(10) ** -display_precision
 
-            # Lot size - OANDA allows 1 unit, but standard lot is 100,000
-            # We set lot_size to 1 for OANDA (micro-lots/units)
-            lot_size = Quantity(1, precision=0)
-
             # create instrument
-            native_symbol = Symbol(oanda_name)
 
             # Use from_dict to handle internal CurrencyPair structure robustly
             margin_rate = inst.get("marginRate", "0.02")
-            
+
             inst_dict = {
                 "id": str(instrument_id),
                 "symbol": oanda_name,
