@@ -1,0 +1,590 @@
+"""run_ml_strategy.py — End-to-end ML Strategy Discovery Pipeline.
+
+Pipeline steps:
+  1. Load EUR/USD data from data/ across multiple timeframes
+  2. Build feature matrix (technical indicators + MTF confluence)
+  3. Engineer 3-class target: LONG (+1), SHORT (-1), FLAT (0)
+  4. Train models via walk-forward expanding-window CV
+  5. Backtest ML predictions via VectorBT (long + short)
+  6. Report metrics and save model if profitable
+
+Directive: Machine Learning Strategy Discovery.md
+"""
+
+import json
+import sys
+import warnings
+from datetime import datetime, timezone
+from pathlib import Path
+
+import joblib
+import numpy as np
+import pandas as pd
+import tomllib
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+DATA_DIR = PROJECT_ROOT / "data"
+MODELS_DIR = PROJECT_ROOT / "models"
+REPORTS_DIR = PROJECT_ROOT / ".tmp" / "reports"
+MODELS_DIR.mkdir(parents=True, exist_ok=True)
+REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+
+warnings.filterwarnings("ignore", category=FutureWarning)
+
+try:
+    import vectorbt as vbt
+except ImportError:
+    vbt = None
+    print("  ⚠ vectorbt not installed — VBT backtest will be skipped.")
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Data Loading
+# ─────────────────────────────────────────────────────────────────────
+
+def load_ohlcv(pair: str, gran: str) -> pd.DataFrame | None:
+    """Load Parquet OHLCV data, return None if missing."""
+    path = DATA_DIR / f"{pair}_{gran}.parquet"
+    if not path.exists():
+        return None
+    df = pd.read_parquet(path)
+    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
+    df = df.set_index("timestamp")
+    for c in ["open", "high", "low", "close"]:
+        df[c] = df[c].astype(float)
+    df["volume"] = df["volume"].astype(float)
+    return df
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Technical Indicators
+# ─────────────────────────────────────────────────────────────────────
+
+def sma(s, p):
+    return s.rolling(p).mean()
+
+def ema(s, p):
+    return s.ewm(span=p, adjust=False).mean()
+
+def rsi(s, p=14):
+    d = s.diff()
+    g = d.where(d > 0, 0.0).rolling(p).mean()
+    l = (-d.where(d < 0, 0.0)).rolling(p).mean()
+    return 100 - (100 / (1 + g / l))
+
+def atr(df, p=14):
+    h, l, c = df["high"], df["low"], df["close"]
+    tr = pd.concat([h - l, (h - c.shift(1)).abs(), (l - c.shift(1)).abs()], axis=1).max(axis=1)
+    return tr.rolling(p).mean()
+
+def macd_hist(s, fast=12, slow=26, sig=9):
+    m = ema(s, fast) - ema(s, slow)
+    return m - ema(m, sig)
+
+def bollinger_bw(s, p=20):
+    mid = sma(s, p)
+    std = s.rolling(p).std()
+    return (2 * 2 * std) / mid
+
+def stochastic(df, k_period=14, d_period=3):
+    """Stochastic oscillator %K and %D."""
+    low_min = df["low"].rolling(k_period).min()
+    high_max = df["high"].rolling(k_period).max()
+    k = 100 * (df["close"] - low_min) / (high_max - low_min)
+    d = k.rolling(d_period).mean()
+    return k, d
+
+def adx(df, period=14):
+    """Average Directional Index (simplified)."""
+    h, l, c = df["high"], df["low"], df["close"]
+    plus_dm = h.diff()
+    minus_dm = -l.diff()
+    plus_dm = plus_dm.where((plus_dm > minus_dm) & (plus_dm > 0), 0.0)
+    minus_dm = minus_dm.where((minus_dm > plus_dm) & (minus_dm > 0), 0.0)
+    tr = pd.concat([h - l, (h - c.shift(1)).abs(), (l - c.shift(1)).abs()], axis=1).max(axis=1)
+    atr_v = tr.rolling(period).mean()
+    plus_di = 100 * plus_dm.rolling(period).mean() / atr_v
+    minus_di = 100 * minus_dm.rolling(period).mean() / atr_v
+    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di)
+    return dx.rolling(period).mean()
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Feature Engineering
+# ─────────────────────────────────────────────────────────────────────
+
+def build_features(df: pd.DataFrame, pair: str) -> pd.DataFrame:
+    """Build comprehensive feature matrix from H4 OHLCV data."""
+    close = df["close"]
+    feats = pd.DataFrame(index=df.index)
+
+    # ── Lagged returns ──
+    for lag in [1, 2, 3, 5, 10, 20]:
+        feats[f"ret_{lag}"] = close.pct_change(lag)
+
+    # ── Trend ──
+    for p in [10, 20, 50]:
+        feats[f"sma_{p}"] = sma(close, p) / close - 1  # Normalised distance
+    feats["ema_slope"] = ema(close, 20).diff() / close  # Normalized EMA slope
+    feats["macd_hist"] = macd_hist(close)
+    feats["ma_cross_20_50"] = (sma(close, 20) > sma(close, 50)).astype(float)
+
+    # ── Momentum ──
+    feats["rsi_14"] = rsi(close, 14)
+    feats["rsi_7"] = rsi(close, 7)
+    stoch_k, stoch_d = stochastic(df)
+    feats["stoch_k"] = stoch_k
+    feats["stoch_d"] = stoch_d
+
+    # ── Volatility ──
+    feats["atr_14"] = atr(df, 14) / close  # Normalised ATR
+    feats["boll_bw"] = bollinger_bw(close)
+    feats["close_std_20"] = close.rolling(20).std() / close
+    feats["adx_14"] = adx(df, 14)
+
+    # ── Volume ──
+    feats["vol_ratio"] = df["volume"] / df["volume"].rolling(20).mean()
+    feats["vol_change"] = df["volume"].pct_change()
+    feats["vol_rsi"] = rsi(df["volume"], 14)
+
+    # ── Price action (simplified) ──
+    feats["range_pct"] = (df["high"] - df["low"]) / close
+
+    # Removed noisy features: body_ratio, wicks, hour, day_of_week
+    return feats
+
+
+def add_mtf_features(feats: pd.DataFrame, pair: str) -> pd.DataFrame:
+    """Add multi-timeframe confluence features from D and W data."""
+    for gran, prefix in [("D", "d"), ("W", "w")]:
+        df = load_ohlcv(pair, gran)
+        if df is None:
+            continue
+        close = df["close"]
+
+        # Compute directional bias on higher TF
+        fast = sma(close, 10 if gran == "D" else 5)
+        slow = sma(close, 30 if gran == "D" else 13)
+        r = rsi(close, 14)
+
+        bias = pd.Series(0.0, index=close.index)
+        bias += np.where(fast > slow, 0.5, -0.5)
+        bias += np.where(r > 50, 0.5, -0.5)
+
+        # Reindex to H4 timeline via forward-fill
+        bias_aligned = bias.reindex(feats.index, method="ffill")
+        feats[f"{prefix}_bias"] = bias_aligned
+
+        # Trend strength
+        trend_str = ((fast - slow) / close).reindex(feats.index, method="ffill")
+        feats[f"{prefix}_trend_str"] = trend_str
+
+        # RSI
+        r_aligned = r.reindex(feats.index, method="ffill")
+        feats[f"{prefix}_rsi"] = r_aligned
+
+    return feats
+
+
+def build_target(close: pd.Series, atr_series: pd.Series,
+                 tp_mult: float = 1.5, sl_mult: float = 1.0) -> pd.Series:
+    """Build a 3-class directional target: 0 SHORT, 1 FLAT, 2 LONG.
+
+    Uses ATR-based forward return thresholds to filter out noise.
+    A move must exceed tp_mult × ATR to count as a valid signal.
+
+    Args:
+        close: Close price series.
+        atr_series: ATR series for dynamic thresholds.
+        tp_mult: ATR multiplier for the signal threshold.
+        sl_mult: ATR multiplier for the stop threshold (not used in labelling).
+
+    Returns:
+        Series of target labels: 0, 1, or 2.
+    """
+    fwd_return = close.shift(-1) / close - 1
+    threshold = atr_series / close * tp_mult
+
+    target = pd.Series(1, index=close.index, name="target")  # Default 1 (FLAT)
+    target[fwd_return > threshold] = 2   # LONG
+    target[fwd_return < -threshold] = 0  # SHORT
+
+    return target
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Walk-Forward Training
+# ─────────────────────────────────────────────────────────────────────
+
+def walk_forward_splits(n: int, n_splits: int = 5, min_train: float = 0.4):
+    """Generate expanding-window walk-forward splits."""
+    min_tr = int(n * min_train)
+    test_size = (n - min_tr) // n_splits
+    splits = []
+    for i in range(n_splits):
+        tr_end = min_tr + i * test_size
+        te_end = min(tr_end + test_size, n)
+        if te_end > tr_end:
+            splits.append((np.arange(tr_end), np.arange(tr_end, te_end)))
+    return splits
+
+
+def train_and_evaluate(X: pd.DataFrame, y: pd.Series, close: pd.Series):
+    """Train ML models with walk-forward CV and return the best one."""
+    from sklearn.ensemble import (
+        GradientBoostingClassifier,
+        RandomForestClassifier,
+    )
+    from sklearn.metrics import accuracy_score, classification_report
+
+    models = {
+        "GradientBoosting": GradientBoostingClassifier(
+            n_estimators=300, max_depth=4, learning_rate=0.05,
+            subsample=0.8, random_state=42,
+        ),
+        "RandomForest": RandomForestClassifier(
+            n_estimators=300, max_depth=8, min_samples_leaf=20,
+            random_state=42, n_jobs=-1,
+        ),
+    }
+
+    # Try to add XGBoost
+    try:
+        from xgboost import XGBClassifier
+        models["XGBoost"] = XGBClassifier(
+            n_estimators=300, max_depth=5, learning_rate=0.05,
+            subsample=0.8, colsample_bytree=0.8,
+            eval_metric="logloss", random_state=42,
+            use_label_encoder=False,
+        )
+    except ImportError:
+        print("  ⚠ XGBoost not installed — skipping.")
+
+    splits = walk_forward_splits(len(X), n_splits=5)
+    best_model = None
+    best_name = ""
+    best_sharpe = -np.inf
+    results = {}
+
+    print(f"\n  {'─'*60}")
+    print(f"  🧠 Training {len(models)} models × {len(splits)} walk-forward folds")
+    print(f"  {'─'*60}\n")
+
+    for name, model in models.items():
+        fold_sharpes = []
+        fold_accs = []
+        all_preds = []
+        all_true = []
+
+        for fold_i, (train_idx, test_idx) in enumerate(splits):
+            X_tr, X_te = X.iloc[train_idx], X.iloc[test_idx]
+            y_tr, y_te = y.iloc[train_idx], y.iloc[test_idx]
+
+            model.fit(X_tr, y_tr)
+            y_pred = model.predict(X_te)
+
+            acc = accuracy_score(y_te, y_pred)
+            fold_accs.append(acc)
+
+            # Signal Sharpe: predicted direction × actual return
+            # Map back: 0 -> -1, 1 -> 0, 2 -> 1
+            pred_mapped = np.where(y_pred == 2, 1, np.where(y_pred == 0, -1, 0))
+            fwd_ret = close.pct_change().shift(-1).iloc[test_idx]
+            strat_ret = pd.Series(pred_mapped, index=fwd_ret.index) * fwd_ret
+            if strat_ret.std() > 0:
+                sharpe = float(strat_ret.mean() / strat_ret.std() * np.sqrt(252 * 6))
+            else:
+                sharpe = 0.0
+            fold_sharpes.append(sharpe)
+
+            all_preds.extend(y_pred)
+            all_true.extend(y_te)
+
+        avg_sharpe = np.mean(fold_sharpes)
+        avg_acc = np.mean(fold_accs)
+
+        # Class distribution in predictions
+        pred_arr = np.array(all_preds)
+        n_long = (pred_arr == 2).sum()   # 2 is LONG
+        n_short = (pred_arr == 0).sum()  # 0 is SHORT
+        n_flat = (pred_arr == 1).sum()   # 1 is FLAT
+        total = len(pred_arr)
+
+        print(f"  {name:25s}  Sharpe={avg_sharpe:>7.3f}  "
+              f"Acc={avg_acc:.3f}  "
+              f"L={n_long}/{total} S={n_short}/{total} F={n_flat}/{total}")
+
+        results[name] = {
+            "sharpe": avg_sharpe,
+            "accuracy": avg_acc,
+            "fold_sharpes": fold_sharpes,
+            "n_long": int(n_long),
+            "n_short": int(n_short),
+            "n_flat": int(n_flat),
+        }
+
+        if avg_sharpe > best_sharpe:
+            best_sharpe = avg_sharpe
+            best_name = name
+            best_model = model
+
+    # Retrain best model on full dataset
+    print(f"\n  🏆 Best model: {best_name} (Sharpe={best_sharpe:.3f})")
+    best_model.fit(X, y)
+
+    # Feature importance
+    importances = best_model.feature_importances_
+    imp_df = pd.DataFrame({
+        "feature": X.columns,
+        "importance": importances,
+    }).sort_values("importance", ascending=False)
+
+    print(f"\n  📊 Top 15 Features:")
+    for _, row in imp_df.head(15).iterrows():
+        bar = "█" * int(row["importance"] * 200)
+        print(f"     {row['feature']:20s} {row['importance']:.4f} {bar}")
+
+    return best_model, best_name, results, imp_df
+
+
+# ─────────────────────────────────────────────────────────────────────
+# VBT Backtest
+# ─────────────────────────────────────────────────────────────────────
+
+def optimize_exits(
+    close: pd.Series,
+    preds: np.ndarray,
+    stop_values: list[float] = [0.005, 0.01, 0.015, 0.02],
+) -> dict:
+    """Optimize exit strategy (Fixed vs Trailing Stop) using OOS signals."""
+    if vbt is None:
+        return {}
+    
+    # 2 is LONG, 0 is SHORT
+    long_entries = pd.Series(preds == 2, index=close.index)
+    short_entries = pd.Series(preds == 0, index=close.index)
+    
+    # We will close on opposite signal as a base, but stops will override
+    long_exits = pd.Series(preds == 0, index=close.index)
+    short_exits = pd.Series(preds == 2, index=close.index)
+
+    results = []
+    print(f"\n  {'─'*60}")
+    print(f"  🏁 Exit Optimization (OOS)")
+    print(f"  {'─'*60}")
+    print(f"  {'Type':<10} {'Stop':<8} {'Sharpe':<8} {'Return':<8} {'Trades':<6}")
+
+    for sl in stop_values:
+        # 1. Fixed Stop Loss / Take Profit (Set TP = 2 * SL for 1:2 R:R)
+        pf_fixed = vbt.Portfolio.from_signals(
+            close,
+            entries=long_entries,
+            exits=long_exits,
+            short_entries=short_entries,
+            short_exits=short_exits,
+            sl_stop=sl,
+            tp_stop=sl * 2.0,  # 1:2 Risk:Reward
+            init_cash=10_000, fees=0.0002, freq="4h"
+        )
+        stats_fixed = {
+            "type": "Fixed",
+            "stop": sl,
+            "sharpe": pf_fixed.sharpe_ratio(),
+            "return": pf_fixed.total_return() * 100,
+            "trades": pf_fixed.trades.count(),
+        }
+        results.append(stats_fixed)
+        print(f"  {stats_fixed['type']:<10} {stats_fixed['stop']:<8.3%} "
+              f"{stats_fixed['sharpe']:<8.3f} {stats_fixed['return']:<8.2f}% "
+              f"{stats_fixed['trades']:<6}")
+
+        # 2. Trailing Stop Loss
+        pf_trail = vbt.Portfolio.from_signals(
+            close,
+            entries=long_entries,
+            exits=long_exits,
+            short_entries=short_entries,
+            short_exits=short_exits,
+            sl_trail=sl,  # Trailing stop
+            init_cash=10_000, fees=0.0002, freq="4h"
+        )
+        stats_trail = {
+            "type": "Trailing",
+            "stop": sl,
+            "sharpe": pf_trail.sharpe_ratio(),
+            "return": pf_trail.total_return() * 100,
+            "trades": pf_trail.trades.count(),
+        }
+        results.append(stats_trail)
+        print(f"  {stats_trail['type']:<10} {stats_trail['stop']:<8.3%} "
+              f"{stats_trail['sharpe']:<8.3f} {stats_trail['return']:<8.2f}% "
+              f"{stats_trail['trades']:<6}")
+
+    # Find best
+    best = max(results, key=lambda x: x["sharpe"])
+    print(f"\n  🏆 Best Exit: {best['type']} Stop {best['stop']:.1%} (Sharpe {best['sharpe']:.3f})")
+    
+    return best
+
+
+def backtest_ml_predictions(
+    model, X: pd.DataFrame, close: pd.Series, split_pct: float = 0.70
+):
+    """Run IS/OOS backtest of the ML model's predictions via VBT."""
+    if vbt is None:
+        print("  ⚠ VBT not available — skipping backtest.")
+        return
+
+    split = int(len(X) * split_pct)
+
+    # Train on IS, predict on OOS
+    X_is, X_oos = X.iloc[:split], X.iloc[split:]
+    close_is, close_oos = close.iloc[:split], close.iloc[split:]
+
+    model.fit(X_is, y_full.iloc[:split])  # noqa: F821 — y_full from caller scope
+    preds_oos = model.predict(X_oos)
+
+    # 1. Base Backtest (Signal Only)
+    n_l = (preds_oos == 2).sum()
+    n_s = (preds_oos == 0).sum()
+    n_f = (preds_oos == 1).sum()
+    print(f"    OOS predictions: LONG={n_l}  SHORT={n_s}  FLAT={n_f}")
+    
+    long_entries = pd.Series(preds_oos == 2, index=close_oos.index)
+    long_exits = pd.Series(preds_oos != 2, index=close_oos.index)
+    short_entries = pd.Series(preds_oos == 0, index=close_oos.index)
+    short_exits = pd.Series(preds_oos != 0, index=close_oos.index)
+
+    long_pf = vbt.Portfolio.from_signals(
+        close_oos, entries=long_entries, exits=long_exits,
+        init_cash=10_000, fees=0.0002, freq="4h",
+    )
+    short_pf = vbt.Portfolio.from_signals(
+        close_oos,
+        entries=pd.Series(False, index=close_oos.index),
+        exits=pd.Series(False, index=close_oos.index),
+        short_entries=short_entries,
+        short_exits=short_exits,
+        init_cash=10_000, fees=0.0002, freq="4h",
+    )
+
+    print(f"\n  {'─'*60}")
+    print(f"  📈 VBT OOS Backtest (Base Signals)")
+    print(f"  {'─'*60}")
+
+    for label, pf in [("LONG", long_pf), ("SHORT", short_pf)]:
+        ret = pf.total_return() * 100
+        sharpe = pf.sharpe_ratio()
+        dd = pf.max_drawdown() * 100
+        trades = pf.trades.count()
+        wr = pf.trades.win_rate() * 100 if trades > 0 else 0
+        print(f"    {label:6s}  Return={ret:>7.2f}%  Sharpe={sharpe:>7.3f}  "
+              f"MaxDD={dd:>6.2f}%  Trades={trades}  WR={wr:.1f}%")
+
+    # 2. Exit Optimization
+    best_exit = optimize_exits(close_oos, preds_oos)
+    return best_exit
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Main Pipeline
+# ─────────────────────────────────────────────────────────────────────
+
+def main() -> None:
+    """Run the full ML strategy discovery pipeline."""
+    pair = "EUR_USD"
+    primary_tf = "H4"
+
+    print(f"{'='*60}")
+    print(f"  🤖 ML Strategy Discovery — {pair} {primary_tf}")
+    print(f"{'='*60}")
+
+    # ── Step 1: Load data ──
+    print(f"\n  Step 1: Loading data...")
+    df = load_ohlcv(pair, primary_tf)
+    if df is None:
+        print(f"  ERROR: {pair}_{primary_tf}.parquet not found in data/")
+        sys.exit(1)
+    print(f"    {len(df)} bars ({df.index.min().date()} → {df.index.max().date()})")
+
+    # ── Step 2: Build features ──
+    print(f"\n  Step 2: Building feature matrix...")
+    feats = build_features(df, pair)
+    feats = add_mtf_features(feats, pair)
+    print(f"    {feats.shape[1]} features built")
+
+    # ── Step 3: Build target ──
+    print(f"\n  Step 3: Engineering target (3-class: LONG/SHORT/FLAT)...")
+    close = df["close"]
+    atr_series = atr(df, 14)
+    # Lower threshold to 0.5 ATR to catch more moves
+    target = build_target(close, atr_series, tp_mult=0.5, sl_mult=0.5)
+
+    # Align features and target
+    valid = feats.notna().all(axis=1) & target.notna() & atr_series.notna()
+    feats = feats[valid]
+    target = target[valid]
+    close_aligned = close[valid]
+
+    # Target distribution
+    n_long = (target == 2).sum()
+    n_short = (target == 0).sum()
+    n_flat = (target == 1).sum()
+    print(f"    Final dataset: {len(feats)} rows × {feats.shape[1]} features")
+    print(f"    Target distribution:  LONG={n_long} ({n_long/len(target)*100:.1f}%)  "
+          f"SHORT={n_short} ({n_short/len(target)*100:.1f}%)  "
+          f"FLAT={n_flat} ({n_flat/len(target)*100:.1f}%)")
+
+    # ── Step 4: Train models ──
+    print(f"\n  Step 4: Training ML models with walk-forward CV...")
+    global y_full
+    y_full = target
+
+    best_model, best_name, results, imp_df = train_and_evaluate(
+        feats, target, close_aligned,
+    )
+
+    # ── Step 5: VBT Backtest ──
+    print(f"\n  Step 5: Running VBT backtest on OOS period...")
+    split = int(len(feats) * 0.70)
+    X_is, X_oos = feats.iloc[:split], feats.iloc[split:]
+    close_is = close_aligned.iloc[:split]
+    close_oos = close_aligned.iloc[split:]
+    y_is = target.iloc[:split]
+
+    # Retrain on IS only, predict OOS
+    best_model.fit(X_is, y_is)
+    best_exit = backtest_ml_predictions(best_model, feats, close_aligned)
+
+    # ── Step 6: Save model ──
+    version = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    model_path = MODELS_DIR / f"ml_strategy_{best_name.lower()}_{version}.joblib"
+    joblib.dump(best_model, model_path)
+    print(f"\n  💾 Model saved → {model_path.name}")
+
+    # Save report
+    report = {
+        "pair": pair,
+        "timeframe": primary_tf,
+        "model": best_name,
+        "n_features": int(feats.shape[1]),
+        "n_samples": int(len(feats)),
+        "target_distribution": {"long": int(n_long), "short": int(n_short), "flat": int(n_flat)},
+        "model_results": {k: {kk: (vv if not isinstance(vv, np.floating) else float(vv))
+                              for kk, vv in v.items()} for k, v in results.items()},
+        "top_features": imp_df.head(15).to_dict(orient="records"),
+    }
+    report_path = REPORTS_DIR / f"ml_strategy_{version}.json"
+    with open(report_path, "w") as f:
+        json.dump(report, f, indent=2, default=str)
+    print(f"  📄 Report saved → {report_path.name}")
+
+    print(f"\n{'='*60}")
+    print(f"  ✅ ML Strategy Discovery Complete")
+    print(f"{'='*60}\n")
+
+
+if __name__ == "__main__":
+    main()

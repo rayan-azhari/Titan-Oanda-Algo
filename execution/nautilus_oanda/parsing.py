@@ -36,10 +36,15 @@ def get_environment_url(environment: str, method: str = "rest") -> str:
 
 
 def parse_instrument_id(oanda_symbol: str) -> InstrumentId:
-    """Convert OANDA symbol (e.g., 'EUR_USD') to Nautilus InstrumentId."""
-    # OANDA uses underscore separator, Nautilus typically expects formatted symbols
-    # Here we map OANDA format directly to Nautilus InstrumentId
-    symbol = Symbol(oanda_symbol)
+    """Convert OANDA symbol (e.g., 'EUR_USD') to Nautilus InstrumentId.
+
+    OANDA uses underscore separators (EUR_USD) but the OandaInstrumentProvider
+    creates instruments with slash separators (EUR/USD). We must match that
+    convention so cache lookups succeed.
+    """
+    # EUR_USD -> EUR/USD
+    nautilus_symbol = oanda_symbol.replace("_", "/")
+    symbol = Symbol(nautilus_symbol)
     venue = Venue("OANDA")
     return InstrumentId(symbol, venue)
 

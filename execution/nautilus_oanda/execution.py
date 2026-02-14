@@ -6,6 +6,7 @@ Execution client for OANDA (orders & positions).
 """
 
 import asyncio
+import logging
 from decimal import Decimal
 from typing import Optional
 
@@ -13,11 +14,22 @@ import oandapyV20
 import oandapyV20.endpoints.orders as orders
 import oandapyV20.endpoints.transactions as transactions
 from nautilus_trader.common.component import LiveExecutionClient
+from nautilus_trader.model.enums import LiquiditySide
 from nautilus_trader.model.enums import OrderSide
 from nautilus_trader.model.enums import OrderType
 from nautilus_trader.model.enums import TimeInForce
+from nautilus_trader.model.events import OrderAccepted
+from nautilus_trader.model.events import OrderCanceled
 from nautilus_trader.model.events import OrderFilled
+from nautilus_trader.model.events import OrderRejected
+from nautilus_trader.model.identifiers import AccountId
+from nautilus_trader.model.identifiers import ClientOrderId
+from nautilus_trader.model.identifiers import TradeId
+from nautilus_trader.model.identifiers import VenueOrderId
 from nautilus_trader.model.objects import Currency
+from nautilus_trader.model.objects import Money
+from nautilus_trader.model.objects import Price
+from nautilus_trader.model.objects import Quantity
 from nautilus_trader.model.orders import LimitOrder
 from nautilus_trader.model.orders import MarketOrder
 from nautilus_trader.model.orders import Order
@@ -82,14 +94,138 @@ class OandaExecutionClient(LiveExecutionClient):
         except Exception as e:
             self._log.error(f"Transaction stream failed: {e}")
 
-    async def _handle_event(self, data: dict):
-        """Process OANDA transaction event."""
-        # TODO: Map OANDA event to Nautilus OrderEvent
-        # This implementation requires mapping:
-        # - OANDA TransactionID -> Nautilus OrderId
-        # - OANDA clientExtensions.id -> Nautilus ClientOrderId
-        # - OANDA reason/price -> Nautilus OrderFilled/OrderCancelled details
-        pass
+    def _handle_event(self, data: dict):
+        """Process OANDA transaction event.
+
+        Maps OANDA transaction stream events to Nautilus order events:
+        - ORDER_FILL  -> OrderFilled
+        - ORDER_CANCEL -> OrderCanceled
+        - ORDER_CREATE -> Logged (OrderAccepted already sent on submission)
+
+        Args:
+            data: Raw OANDA transaction JSON dict.
+        """
+        event_type = data.get("type", "")
+        transaction_id = data.get("id", "unknown")
+
+        # Extract the Nautilus ClientOrderId from OANDA clientExtensions
+        client_ext = data.get("clientExtensions", {})
+        client_order_id_str = client_ext.get("id")
+
+        if not client_order_id_str:
+            # Not a Nautilus-originated order; log and skip
+            self._log.debug(
+                f"Transaction {transaction_id} ({event_type}) has no "
+                f"clientExtensions.id — skipping."
+            )
+            return
+
+        client_order_id = ClientOrderId(client_order_id_str)
+        venue_order_id = VenueOrderId(str(data.get("orderID", transaction_id)))
+
+        if event_type == "ORDER_FILL":
+            self._handle_fill(data, client_order_id, venue_order_id)
+        elif event_type == "ORDER_CANCEL":
+            self._handle_cancel(data, client_order_id, venue_order_id)
+        elif event_type == "ORDER_CREATE":
+            self._log.info(
+                f"Order created on OANDA: {venue_order_id} "
+                f"(client: {client_order_id})"
+            )
+        else:
+            self._log.debug(f"Unhandled transaction type: {event_type}")
+
+    def _handle_fill(self, data: dict, client_order_id: ClientOrderId,
+                     venue_order_id: VenueOrderId) -> None:
+        """Map an OANDA ORDER_FILL to a Nautilus OrderFilled event.
+
+        Args:
+            data: Raw OANDA fill transaction dict.
+            client_order_id: Mapped Nautilus client order ID.
+            venue_order_id: OANDA-side order ID.
+        """
+        instrument_id = parse_instrument_id(data.get("instrument", ""))
+        fill_price = Decimal(data.get("price", "0"))
+        units = abs(int(data.get("units", "0")))
+        pl = Decimal(data.get("pl", "0"))
+        commission = Decimal(data.get("commission", "0"))
+        timestamp = parse_datetime(data.get("time", ""))
+
+        # Determine price precision from the fill price string
+        price_str = data.get("price", "0")
+        precision = len(price_str.split(".")[-1]) if "." in price_str else 0
+
+        # Determine the quote currency from the instrument (e.g. EUR_USD -> USD)
+        parts = data.get("instrument", "_").split("_")
+        quote_ccy = parts[1] if len(parts) == 2 else "USD"
+
+        order = self._cache.order(client_order_id)
+        if order is None:
+            self._log.warning(
+                f"Received fill for unknown order {client_order_id}. "
+                f"Venue ID: {venue_order_id}"
+            )
+            return
+
+        fill = OrderFilled(
+            trader_id=self.trader_id,
+            strategy_id=order.strategy_id,
+            instrument_id=instrument_id,
+            client_order_id=client_order_id,
+            venue_order_id=venue_order_id,
+            account_id=AccountId(f"OANDA-{self._account_id}"),
+            trade_id=TradeId(str(data.get("id", "0"))),
+            order_side=order.side,
+            order_type=order.order_type,
+            last_qty=Quantity(units, precision=0),
+            last_px=Price(fill_price, precision=precision),
+            currency=Currency.from_str(quote_ccy),
+            commission=Money(commission, Currency.from_str(quote_ccy)),
+            liquidity_side=LiquiditySide.TAKER,
+            ts_event=timestamp.value,
+            ts_init=self._clock.timestamp_ns(),
+        )
+
+        self._msgbus.send(endpoint="ExecEngine.process", msg=fill)
+        self._log.info(
+            f"ORDER_FILL: {instrument_id} {order.side.name} "
+            f"{units} @ {fill_price} (PnL: {pl})"
+        )
+
+    def _handle_cancel(self, data: dict, client_order_id: ClientOrderId,
+                       venue_order_id: VenueOrderId) -> None:
+        """Map an OANDA ORDER_CANCEL to a Nautilus OrderCanceled event.
+
+        Args:
+            data: Raw OANDA cancel transaction dict.
+            client_order_id: Mapped Nautilus client order ID.
+            venue_order_id: OANDA-side order ID.
+        """
+        timestamp = parse_datetime(data.get("time", ""))
+        reason = data.get("reason", "UNKNOWN")
+
+        order = self._cache.order(client_order_id)
+        if order is None:
+            self._log.warning(
+                f"Received cancel for unknown order {client_order_id}."
+            )
+            return
+
+        canceled = OrderCanceled(
+            trader_id=self.trader_id,
+            strategy_id=order.strategy_id,
+            instrument_id=order.instrument_id,
+            client_order_id=client_order_id,
+            venue_order_id=venue_order_id,
+            account_id=AccountId(f"OANDA-{self._account_id}"),
+            ts_event=timestamp.value,
+            ts_init=self._clock.timestamp_ns(),
+        )
+
+        self._msgbus.send(endpoint="ExecEngine.process", msg=canceled)
+        self._log.info(
+            f"ORDER_CANCEL: {client_order_id} reason={reason}"
+        )
 
     async def submit_order(self, order: Order):
         """Submit an order to OANDA."""
@@ -161,7 +297,36 @@ class OandaExecutionClient(LiveExecutionClient):
             
         return data
 
-    async def cancel_order(self, command):
-        """Cancel an order."""
-        # Implementation via updates to existing orders
-        pass
+    async def cancel_order(self, command) -> None:
+        """Cancel an order on OANDA.
+
+        Uses the OANDA OrderCancel endpoint to cancel a pending order.
+        The confirmation arrives asynchronously via the transaction stream
+        and is handled by _handle_cancel().
+
+        Args:
+            command: Nautilus CancelOrder command with order details.
+        """
+        # Resolve the venue order ID (OANDA-side) from our cache
+        order = self._cache.order(command.client_order_id)
+        if order is None or order.venue_order_id is None:
+            self._log.error(
+                f"Cannot cancel — order not found or no venue ID: "
+                f"{command.client_order_id}"
+            )
+            return
+
+        oanda_order_id = order.venue_order_id.value
+        r = orders.OrderCancel(self._account_id, oanda_order_id)
+
+        try:
+            response = await self._loop.run_in_executor(
+                None, lambda: self._api.request(r)
+            )
+            self._log.info(
+                f"Cancel request sent for {oanda_order_id}: {response}"
+            )
+        except Exception as e:
+            self._log.error(
+                f"Cancel request failed for {oanda_order_id}: {e}"
+            )

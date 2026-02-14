@@ -31,7 +31,7 @@ import oandapyV20.endpoints.orders as orders
 import oandapyV20.endpoints.positions as positions
 import oandapyV20.endpoints.pricing as pricing
 
-from rate_limiter import rate_limited_call, order_limiter, api_limiter
+from execution.rate_limiter import rate_limited_call, order_limiter, api_limiter
 
 MODELS_DIR = PROJECT_ROOT / "models"
 LOGS_DIR = PROJECT_ROOT / ".tmp" / "logs"

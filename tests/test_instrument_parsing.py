@@ -1,66 +1,84 @@
-"""test_instrument_parsing.py — Unit tests for OANDA instrument provider.
+"""test_instrument_parsing.py — Unit tests for OANDA parsing utilities.
 
-Validates tick_size accuracy and data completeness of the
-auto-generated instrument provider.
+Validates the parsing module's symbol conversion, price/quantity parsing,
+and environment URL resolution — all without requiring a live API connection.
 
 Directive: Nautilus-Oanda Adapter Construction.md (Phase 1)
 """
 
 from decimal import Decimal
-from pathlib import Path
 
 import pytest
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+from execution.nautilus_oanda.parsing import (
+    get_environment_url,
+    parse_instrument_id,
+    parse_price,
+    parse_quantity,
+)
 
 
-def test_instrument_provider_exists():
-    """The instrument provider module should exist after generation."""
-    provider_path = PROJECT_ROOT / "execution" / "oanda_instrument_provider.py"
-    assert provider_path.exists(), (
-        "oanda_instrument_provider.py not found. "
-        "Run: uv run python execution/parse_oanda_instruments.py"
-    )
+class TestParseInstrumentId:
+    """Test OANDA -> Nautilus symbol conversion."""
+
+    def test_standard_pair(self):
+        """EUR_USD should become EUR/USD.OANDA."""
+        result = parse_instrument_id("EUR_USD")
+        assert result.symbol.value == "EUR/USD"
+        assert result.venue.value == "OANDA"
+
+    def test_jpy_pair(self):
+        """USD_JPY should map correctly."""
+        result = parse_instrument_id("USD_JPY")
+        assert result.symbol.value == "USD/JPY"
+
+    def test_cross_pair(self):
+        """GBP_AUD cross pair."""
+        result = parse_instrument_id("GBP_AUD")
+        assert result.symbol.value == "GBP/AUD"
 
 
-def test_instrument_provider_imports():
-    """The generated module should be importable."""
-    import importlib.util
+class TestParsePrice:
+    """Test OANDA price string -> Nautilus Price."""
 
-    spec = importlib.util.spec_from_file_location(
-        "oanda_instrument_provider",
-        PROJECT_ROOT / "execution" / "oanda_instrument_provider.py",
-    )
-    if spec is None or spec.loader is None:
-        pytest.skip("Module could not be loaded")
+    def test_five_decimal(self):
+        """EUR/USD-style 5-digit price."""
+        price = parse_price("1.10523")
+        assert price.as_decimal() == Decimal("1.10523")
 
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    assert hasattr(module, "OANDA_INSTRUMENTS")
+    def test_three_decimal(self):
+        """JPY-style 3-digit price."""
+        price = parse_price("149.123")
+        assert price.as_decimal() == Decimal("149.123")
 
 
-def test_tick_size_accuracy():
-    """Tick sizes should match OANDA's display precision.
+class TestParseQuantity:
+    """Test OANDA units string -> Nautilus Quantity."""
 
-    EUR/USD has 5 decimal places → tick_size = 0.00001
-    USD/JPY has 3 decimal places → tick_size = 0.001
-    """
-    import importlib.util
+    def test_positive_units(self):
+        qty = parse_quantity("10000")
+        assert int(qty) == 10000
 
-    spec = importlib.util.spec_from_file_location(
-        "oanda_instrument_provider",
-        PROJECT_ROOT / "execution" / "oanda_instrument_provider.py",
-    )
-    if spec is None or spec.loader is None:
-        pytest.skip("Module could not be loaded")
+    def test_single_unit(self):
+        qty = parse_quantity("1")
+        assert int(qty) == 1
 
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
 
-    instruments = module.OANDA_INSTRUMENTS
+class TestEnvironmentUrls:
+    """Test OANDA environment URL resolution."""
 
-    if "EUR_USD" in instruments:
-        assert instruments["EUR_USD"]["tick_size"] == Decimal("0.00001")
+    def test_practice_rest(self):
+        url = get_environment_url("practice", "rest")
+        assert "fxpractice" in url
 
-    if "USD_JPY" in instruments:
-        assert instruments["USD_JPY"]["tick_size"] == Decimal("0.001")
+    def test_live_rest(self):
+        url = get_environment_url("live", "rest")
+        assert "fxtrade" in url
+
+    def test_practice_stream(self):
+        url = get_environment_url("practice", "stream")
+        assert "stream-fxpractice" in url
+
+    def test_invalid_environment(self):
+        url = get_environment_url("invalid", "rest")
+        assert url == ""

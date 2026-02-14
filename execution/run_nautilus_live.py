@@ -8,8 +8,10 @@ loads instruments, and starts the event loop.
 """
 
 import asyncio
+import logging
 import signal
 import sys
+from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
@@ -35,19 +37,50 @@ from execution.nautilus_oanda.data import OandaDataClient
 from execution.nautilus_oanda.execution import OandaExecutionClient
 from strategies.simple_printer import SimplePrinter, SimplePrinterConfig
 
-# Configure basic logging for the Nautilus node
-# NautilusTrader uses structlog for structured logging capabilities
+
+# ---------------------------------------------------------------------------
+# Structured logging — file + console, matching run_live.py pattern
+# ---------------------------------------------------------------------------
+LOGS_DIR = PROJECT_ROOT / ".tmp" / "logs"
+LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _setup_logging() -> logging.Logger:
+    """Configure file + console logging for the Nautilus session."""
+    date_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    log_file = LOGS_DIR / f"nautilus_{date_str}.log"
+
+    logger = logging.getLogger("titan.nautilus")
+    logger.setLevel(logging.INFO)
+
+    fmt = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
+
+    fh = logging.FileHandler(log_file)
+    fh.setFormatter(fmt)
+    logger.addHandler(fh)
+
+    ch = logging.StreamHandler()
+    ch.setFormatter(fmt)
+    logger.addHandler(ch)
+
+    return logger
 
 
 def main():
     """Run the live trading node."""
+    logger = _setup_logging()
+
     account_id = os.getenv("OANDA_ACCOUNT_ID")
     access_token = os.getenv("OANDA_ACCESS_TOKEN")
     environment = os.getenv("OANDA_ENVIRONMENT", "practice")
 
     if not account_id or not access_token:
-        print("ERROR: OANDA credentials not found.")
+        logger.error("OANDA credentials not found. Set OANDA_ACCOUNT_ID and OANDA_ACCESS_TOKEN in .env.")
         sys.exit(1)
+
+    logger.info("=" * 50)
+    logger.info("  TITAN NAUTILUS ENGINE — %s", environment.upper())
+    logger.info("=" * 50)
 
     # 1. Configure the Node
     node_config = TradingNodeConfig(

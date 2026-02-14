@@ -65,6 +65,9 @@ This project follows a **3-layer architecture** that separates *Probabilistic In
 │   ├── parse_oanda_instruments.py ← Legacy instrument parser
 │   ├── run_live.py                ← Legacy Python-only engine (placeholder)
 │   ├── run_nautilus_live.py       ← NautilusTrader Live Engine
+│   ├── fetch_eur_usd.py           ← OANDA API Data Downloader (Raw Parquet)
+│   ├── run_mtf_backtest.py        ← Multi-Timeframe Confluence Strategy (VBT)
+│   ├── run_ml_strategy.py         ← End-to-End ML Pipeline (Feature Eng + Train + OOS)
 │   ├── kill_switch.py             ← Emergency: flatten all positions
 │   ├── build_docker_image.py      ← Docker container for GCE
 │   └── send_notification.py       ← Slack alert integration
@@ -104,16 +107,20 @@ uv run python execution/verify_connection.py
 
 ### 4. Alpha Research Loop
 ```bash
-uv run python execution/download_oanda_data.py
-uv run python execution/validate_data.py
-uv run python execution/run_vbt_optimisation.py
-uv run python execution/mtf_confluence.py
+uv run python execution/fetch_eur_usd.py       # Download raw OHLCV
+uv run python execution/run_vbt_optimisation.py # Run VBT parameter sweep
+uv run python execution/run_mtf_backtest.py    # Test MTF Confluence Strategy
 ```
 
 ### 5. ML Strategy Discovery
 ```bash
-uv run python execution/build_ml_features.py
-uv run python execution/train_ml_model.py
+# Runs full pipeline: Feature Engineering -> Target Eng -> Training -> OOS Backtest
+uv run python execution/run_ml_strategy.py
+```
+
+### 6. Ensemble Signal Aggregation
+```bash
+uv run python execution/run_ensemble.py
 ```
 
 ### 7. Deployment (Docker)
@@ -122,7 +129,7 @@ uv run python execution/build_docker_image.py
 docker run --env-file .env titan-oanda-algo
 ```
 
-### 7. NautilusTrader Live (Recommended)
+### 8. NautilusTrader Live (Recommended)
 ```bash
 # Ensure OANDA_ACCOUNT_ID and OANDA_ACCESS_TOKEN are set in .env
 uv run python execution/run_nautilus_live.py
@@ -141,7 +148,8 @@ uv run python execution/run_nautilus_live.py
 
 - [x] Ensemble / multi-strategy framework
 - [x] Time-varying spread model
-- [x] Multi-timeframe confluence signals (H1 + H4 + D)
+- [x] Multi-timeframe confluence signals (H1 + H4 + D + W)
+- [x] ML Strategy Discovery (XGBoost + Walk-Forward Validation)
 - [x] Dockerization for cloud deployment
 - [ ] Configure Slack Alerts for live trading monitoring
 - [ ] VectorBT Pro upgrade for production-scale mining

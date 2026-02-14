@@ -44,6 +44,7 @@ class OandaDataClient(LiveDataClient):
         self._account_id = config.account_id
         self._stream_task: Optional[asyncio.Task] = None
         self._subscribed_instruments = set()
+        self._reconnect_count: int = 0
 
     async def connect(self):
         """Connect to OANDA stream."""
@@ -102,39 +103,69 @@ class OandaDataClient(LiveDataClient):
             self._stream_task = self._loop.create_task(self._stream_quotes())
 
     async def _stream_quotes(self):
-        """Fetch quotes from OANDA stream."""
+        """Fetch quotes from OANDA stream with exponential backoff reconnection.
+
+        On disconnect or error the client will retry up to
+        ``reconnect_attempts`` times (from config) with exponential backoff
+        delay capped at 60 seconds.  The retry counter resets whenever
+        a successful connection is established (i.e. at least one quote
+        arrives), so transient network blips don't exhaust the budget.
+        """
         if not self._subscribed_instruments:
             return
 
-        # Convert InstrumentIds back to OANDA format (EUR_USD)
-        instruments = [
-            inst.symbol.value.replace("/", "_") 
-            for inst in self._subscribed_instruments
-        ]
-        params = {"instruments": ",".join(instruments)}
-        
-        # OANDA streaming is blocking, so run in executor
-        # CAUTION: This means we consume the stream in a separate thread
-        # and push events back to the loop.
-        
-        try:
-            r = pricing.PricingStream(accountID=self._account_id, params=params)
-            
-            def stream_generator():
-                return self._api.request(r)
+        max_attempts = self._config.reconnect_attempts
+        base_delay = self._config.reconnect_delay
 
-            # The OANDA v20 client's stream request is a blocking generator.
-            # To prevent blocking the Nautilus asyncio event loop, we must run
-            # the consumption loop in a separate thread using the default executor.
-            await self._loop.run_in_executor(None, self._consume_stream, r)
+        while self._connected:
+            # Convert InstrumentIds back to OANDA format (EUR_USD)
+            instruments = [
+                inst.symbol.value.replace("/", "_")
+                for inst in self._subscribed_instruments
+            ]
+            params = {"instruments": ",".join(instruments)}
 
-        except asyncio.CancelledError:
-            self._log.info("OANDA stream cancelled.")
-        except Exception as e:
-            self._log.error(f"OANDA stream error: {e}")
-            # Reconnect logic would go here
-            await asyncio.sleep(self._config.reconnect_delay)
-            # await self._restart_stream() # Risk of recursion loop?
+            try:
+                r = pricing.PricingStream(
+                    accountID=self._account_id, params=params
+                )
+                self._log.info(
+                    f"OANDA stream connecting for {len(instruments)} "
+                    f"instrument(s)... (attempt {self._reconnect_count + 1})"
+                )
+
+                # The OANDA v20 client's stream request is a blocking
+                # generator.  Run in executor to avoid blocking the loop.
+                await self._loop.run_in_executor(
+                    None, self._consume_stream, r
+                )
+
+                # If _consume_stream returns cleanly, the stream ended.
+                # Reset counter (it was connected at some point).
+                self._reconnect_count = 0
+
+            except asyncio.CancelledError:
+                self._log.info("OANDA stream cancelled.")
+                return  # Clean shutdown — do not reconnect
+
+            except Exception as e:
+                self._log.error(f"OANDA stream error: {e}")
+
+            # --- Reconnect with exponential backoff ---
+            self._reconnect_count += 1
+            if self._reconnect_count > max_attempts:
+                self._log.error(
+                    f"OANDA stream: exceeded {max_attempts} reconnect "
+                    f"attempts. Giving up."
+                )
+                return
+
+            delay = min(base_delay * (2 ** (self._reconnect_count - 1)), 60.0)
+            self._log.warning(
+                f"OANDA stream reconnecting in {delay:.1f}s "
+                f"(attempt {self._reconnect_count}/{max_attempts})..."
+            )
+            await asyncio.sleep(delay)
 
     def _consume_stream(self, request):
         """Blocking loop to consume OANDA stream."""

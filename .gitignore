@@ -16,7 +16,7 @@ build/
 .venv/
 
 # Docker
-Dockerfile
+# (Dockerfile is tracked — do not ignore)
 
 # IDE
 .vscode/

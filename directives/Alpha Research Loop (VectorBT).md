@@ -22,8 +22,8 @@ Identify and optimise a viable **daily swing trading** strategy for **EUR/USD**,
 
 ### 1. Data Ingestion
 
-Run `execution/download_oanda_data.py` to pull **2+ years of H1/H4/D/W OHLC data**.
-Store in `.tmp/data/raw` as Parquet.
+Run `execution/fetch_eur_usd.py` to pull **2+ years of H1/H4/D/W OHLC data**.
+Store in `data/` as Parquet (automatically handles pagination and resume).
 
 ### 2. Data Validation
 
@@ -46,7 +46,13 @@ Run `execution/validate_data.py` to check for gaps, duplicates, and outlier spik
 - Generate **Sharpe Ratio Heatmap** (plotly).
 - **Architect Agent** identifies the "Plateau of Stability".
 
-### 6. Parity Transfer
+### 6. Multi-Timeframe Confluence (MTF)
+
+- Run `execution/run_mtf_backtest.py`.
+- Tests strategies that require alignment across H1, H4, D, and W timeframes.
+- Generates `mtf_confluence_{IS/OOS}.html` reports.
+
+### 7. Parity Transfer
 
 - Convert optimal parameters into `config/strategy_config.toml`.
 

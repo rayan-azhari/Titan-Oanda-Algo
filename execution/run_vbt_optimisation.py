@@ -19,7 +19,7 @@ import pandas as pd
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-RAW_DATA_DIR = PROJECT_ROOT / ".tmp" / "data" / "raw"
+RAW_DATA_DIR = PROJECT_ROOT / "data"
 REPORTS_DIR = PROJECT_ROOT / ".tmp" / "reports"
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -35,7 +35,14 @@ except ImportError:
     print("ERROR: plotly is not installed. Run `uv sync` first.")
     sys.exit(1)
 
-from spread_model import build_spread_series, build_total_cost_series
+from execution.spread_model import build_spread_series, build_total_cost_series
+
+# Mapping OANDA granularity codes to pandas frequency strings.
+# VBT needs this to calculate annualised Sharpe ratios.
+GRAN_TO_FREQ: dict[str, str] = {
+    "M1": "1min", "M5": "5min", "M15": "15min", "M30": "30min",
+    "H1": "1h", "H4": "4h", "D": "1D", "W": "1W",
+}
 
 
 def load_instruments_config() -> dict:
@@ -48,7 +55,7 @@ def load_instruments_config() -> dict:
         return tomllib.load(f)
 
 
-def load_raw_data(pair: str, granularity: str) -> pd.DataFrame:
+def load_raw_data(pair: str, granularity: str) -> pd.DataFrame | None:
     """Load raw Parquet data for a given instrument and granularity.
 
     Args:
@@ -56,18 +63,22 @@ def load_raw_data(pair: str, granularity: str) -> pd.DataFrame:
         granularity: Candle granularity (e.g., "H4", "D").
 
     Returns:
-        DataFrame with timestamp-indexed OHLCV data.
+        DataFrame with timestamp-indexed OHLCV data, or None if not found.
     """
     path = RAW_DATA_DIR / f"{pair}_{granularity}.parquet"
     if not path.exists():
-        print(f"ERROR: {path} not found. Run download_oanda_data.py first.")
-        sys.exit(1)
+        print(f"  ⚠ {path.name} not found — skipping. Run fetch script first.")
+        return None
     df = pd.read_parquet(path)
-    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
     df = df.set_index("timestamp")
     # Convert Decimal columns to float for VBT compatibility
     for col in ["open", "high", "low", "close"]:
         df[col] = df[col].astype(float)
+    # Set index frequency for VBT annualisation
+    freq = GRAN_TO_FREQ.get(granularity)
+    if freq:
+        df = df.asfreq(freq, method="pad")
     return df
 
 
@@ -222,6 +233,8 @@ def main() -> None:
         print(f"{'='*60}\n")
 
         df = load_raw_data(pair, granularity)
+        if df is None:
+            continue
         is_df, oos_df = split_in_out_of_sample(df)
 
         # Calculate session-weighted average spread for this pair

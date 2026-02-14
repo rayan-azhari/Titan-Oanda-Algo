@@ -6,30 +6,31 @@ Train and validate a Machine Learning model to predict **price direction** (Clas
 
 ## Inputs
 
-- Raw Parquet data from `.tmp/data/raw`
+- Raw Parquet data from `data/`
 - Feature definitions (e.g., RSI, SMA, Volatility, Time of Day)
 
 ## Execution Steps
 
-### 1. Feature Engineering
+### 1. Unified Pipeline Execution
 
-- Run `execution/build_ml_features.py`.
-- Create a **Feature Matrix** ($X$) and **Target Vector** ($y$).
+- Run `execution/run_ml_strategy.py`.
+- This script handles:
+    1.  **Feature Engineering**: Builds 30+ features (Volume, Momentum, MTF Bias).
+    2.  **Target Engineering**: 3-class target (LONG/SHORT/FLAT) with 0.5 ATR threshold.
+    3.  **Model Training**: Walk-forward cross-validation (5 folds, GradientBoosting/XGBoost).
+    4.  **VBT Backtest**: Tests base signals and optimizes exits (Fixed vs Trailing stops) on OOS data.
 
 > [!CAUTION]
-> **Crucial:** Shift targets backwards by 1 period to prevent look-ahead bias.
+> **Look-ahead Bias:** Ensure targets are shifted backwards by 1 period. The script handles this automatically.
 
-### 2. Model Training (Walk-Forward)
+### 2. Performance Evaluation
 
-- Run `execution/train_ml_model.py`.
-- Use `vbt.Splitter` to create expanding or rolling windows *(simulating real-time learning)*.
-- Train an `XGBClassifier` or `RandomForest` on the train set; predict on the test set.
-- Ensure `random_state=42` is set for reproducibility.
+- Review the console output and JSON report in `.tmp/reports/`.
+- Key metrics: **Signal Sharpe Ratio**, **Win Rate**, and **OOS Equity Curve**.
 
-### 3. Performance Evaluation
+### 3. Model Serialisation
 
-- Generate a **Confusion Matrix** and **Feature Importance** plot.
-- Calculate the **Sharpe Ratio** of the predicted signals, not just the model accuracy.
+- The best performing model (highest Validation Sharpe) is automatically saved to `models/` as a `.joblib` file.
 
 ### 4. Model Serialisation
 

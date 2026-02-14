@@ -5,12 +5,13 @@
 # final confluence score. Higher timeframes = more influence.
 
 [weights]
-H1 = 0.20           # Entry timing — lowest weight
-H4 = 0.40           # Primary swing frame — highest weight
-D  = 0.40           # Trend confirmation — equal to H4
+H1 = 0.15           # Entry timing — lowest weight
+H4 = 0.35           # Primary swing frame — highest weight
+D  = 0.35           # Trend confirmation — equal to H4
+W  = 0.15           # Regime filter — weekly direction
 
 # Minimum weighted score to generate a trade signal.
-# 0.3 = at least 2 out of 3 timeframes must agree strongly.
+# 0.3 = at least 2 out of 4 timeframes must agree strongly.
 confirmation_threshold = 0.30
 
 # Per-timeframe indicator settings
@@ -31,3 +32,9 @@ fast_ma = 10         # Shorter MAs on daily — fewer bars available
 slow_ma = 30
 rsi_period = 14
 structure_period = 10
+
+[W]
+fast_ma = 5          # Very short MAs on weekly — few bars
+slow_ma = 13
+rsi_period = 14
+structure_period = 5
