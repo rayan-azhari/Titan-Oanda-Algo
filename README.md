@@ -146,27 +146,32 @@ uv run python execution/run_nautilus_live.py
 
 ## Testing & CI/CD
 
-This project uses **GitHub Actions** for Continuous Integration. Before pushing code, ensure you run the checks locally.
+This project uses **GitHub Actions** for Continuous Integration (`.github/workflows/ci.yml`). Three checks run on every push to `main`:
 
-### 1. Install Test Dependencies
-The `dev` environment is optional. Install it explicitly:
+| Step | Command | Purpose |
+|---|---|---|
+| **Lint** | `uv run ruff check .` | Style, imports, unused vars |
+| **Format** | `uv run ruff format --check .` | Consistent code formatting |
+| **Test** | `uv run pytest tests/ -v --tb=short -x` | Unit tests |
+
+### Pre-Push Checklist
+Run all three locally before pushing:
 ```bash
+# 1. Install dev tools (once)
 uv sync --extra dev
-```
 
-### 2. Run Linter (Ruff)
-Checks for formatting and PEP 8 compliance.
-```bash
-uv run ruff check .
-# Auto-fix issues:
-uv run ruff check --fix .
-```
+# 2. Lint + auto-fix
+uv run ruff check . --fix
 
-### 3. Run Unit Tests (Pytest)
-Executes all tests in the `tests/` directory.
-```bash
+# 3. Auto-format
+uv run ruff format .
+
+# 4. Run tests
 uv run pytest tests/ -v
 ```
+If all pass locally with zero errors, CI will also pass.
+
+> **📖 Full CI/CD troubleshooting guide:** See [USER_GUIDE.md § CI/CD Pipeline & Code Quality](USER_GUIDE.md#-cicd-pipeline--code-quality).
 
 ## Roadmap
 

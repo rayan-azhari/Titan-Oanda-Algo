@@ -201,6 +201,91 @@ If you want the bot to run 24/7 without your laptop being on, you use **Docker**
 
 ---
 
+## 🔄 CI/CD Pipeline & Code Quality
+
+Every time you push code to GitHub, an automated **CI/CD pipeline** runs to check your code quality and test suite. If it fails, your changes are flagged as broken. **Always run these checks locally before pushing.**
+
+### What the Pipeline Checks
+
+The CI pipeline (`.github/workflows/ci.yml`) runs three checks:
+
+| Step | Command | What it Checks |
+|---|---|---|
+| **Ruff Linter** | `uv run ruff check .` | Import errors, unused variables, naming rules |
+| **Ruff Formatter** | `uv run ruff format --check .` | Code formatting (spacing, quotes, trailing commas) |
+| **Pytest** | `uv run pytest tests/ -v --tb=short -x` | Unit tests pass |
+
+### How to Run Checks Locally (Pre-Push Checklist)
+
+**Always run these 3 commands before pushing:**
+
+```bash
+# Step 1: Install test dependencies (only needed once)
+uv sync --extra dev
+
+# Step 2: Fix lint errors
+uv run ruff check . --fix
+
+# Step 3: Auto-format code
+uv run ruff format .
+
+# Step 4: Run tests
+uv run pytest tests/ -v
+```
+
+If all 3 pass locally with **zero errors**, the CI pipeline will also pass.
+
+### Common CI Failures & Fixes
+
+**1. `E402 Module level import not at top of file`**
+- **Cause:** Imports appear after `sys.path.insert()` or `load_dotenv()` calls.
+- **Fix:** Already suppressed for `execution/*.py` and `tests/*` in `pyproject.toml`. If adding new files, ensure they follow the same pattern or add them to the `per-file-ignores` section.
+
+**2. `F841 Local variable is assigned to but never used`**
+- **Cause:** You assigned a variable but never read it.
+- **Fix:** Remove it, or prefix with `_` (e.g., `_unused_var = ...`).
+
+**3. `E501 Line too long`**
+- **Cause:** A line exceeds 100 characters.
+- **Fix:** Break the line. Use parentheses for multi-line strings.
+
+**4. `ImportError` in tests**
+- **Cause:** NautilusTrader API changed (classes moved to new modules).
+- **Fix:** Check the [NautilusTrader docs](https://nautilustrader.io/docs) for updated import paths. Common moves:
+  - `LiveDataClient` → `nautilus_trader.live.data_client`
+  - `LiveExecutionClient` → `nautilus_trader.live.execution_client`
+  - `CurrencyPair` → `nautilus_trader.model.instruments.currency_pair`
+
+**5. `TypeError` in NautilusTrader objects**
+- **Cause:** Constructor signatures changed between versions.
+- **Fix:** Use factory methods instead of direct constructors:
+  - `Price.from_str("1.05")` instead of `Price(Decimal("1.05"))`
+  - `Quantity.from_str("100")` instead of `Quantity(100, 0)`
+  - `CurrencyPair.from_dict({...})` instead of `CurrencyPair(...)`
+
+**6. `Would reformat: file.py` (Formatter)**
+- **Cause:** Code isn't formatted to Ruff's standard (quotes, spacing, etc.).
+- **Fix:** Run `uv run ruff format .` — it auto-formats everything.
+
+### Ruff Configuration
+
+All linting and formatting rules are configured in `pyproject.toml` under `[tool.ruff]`:
+
+```toml
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "D"]  # Enabled rule categories
+ignore = ["D100", "D102", "D103", "D104", "D107", "D205", "D415", "D417"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E402", "D"]           # Tests: allow late imports
+"execution/*.py" = ["E402"]         # Scripts: allow sys.path before imports
+"strategies/*" = ["D"]              # Strategies: skip docstring rules
+```
+
+If you add a new directory with Python files, you may need to add it here.
+
+---
+
 ## ❓ Troubleshooting / FAQ
 
 **Q: "Command not found: uv"**
@@ -214,6 +299,15 @@ A: Your Token is wrong or expired. Generate a new one on the OANDA website and u
 
 **Q: I don't see any trades!**
 A: The market might be closed (Weekends). Or the strategy just hasn't found a good setup yet. Be patient.
+
+**Q: CI pipeline fails with "Would reformat"**
+A: Run `uv run ruff format .` locally, commit, and push again. The formatter auto-fixes all formatting.
+
+**Q: CI pipeline fails with "ruff check" errors**
+A: Run `uv run ruff check . --fix` locally. It auto-fixes most issues. For remaining errors, read the error message — it tells you the exact file, line, and what's wrong.
+
+**Q: Tests pass locally but fail in CI**
+A: Check if you have `.env` variables that tests depend on. CI doesn't have your `.env` file, so tests requiring live OANDA credentials are auto-skipped. If tests fail for a different reason, check the CI logs for the exact error.
 
 ---
 
