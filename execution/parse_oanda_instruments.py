@@ -116,7 +116,7 @@ def main() -> None:
     output_path = OUTPUT_DIR / "oanda_instrument_provider.py"
     output_path.write_text(code)
     print(f"   ✓ Generated {output_path}")
-    print(f"   Validate with: uv run python -m pytest tests/test_instrument_parsing.py")
+    print("   Validate with: uv run python -m pytest tests/test_instrument_parsing.py")
 
     print("\n✅ Instrument provider generated.\n")
 

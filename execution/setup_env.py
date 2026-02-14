@@ -6,7 +6,6 @@ and optional Slack webhook URL.
 Directive: Workspace Initialisation.md
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -60,7 +59,7 @@ def main() -> None:
 
     ENV_FILE.write_text("\n".join(lines), encoding="utf-8")
     print(f"\n  ✓ Created {ENV_FILE}")
-    print(f"  Verify with: uv run python execution/verify_connection.py")
+    print("  Verify with: uv run python execution/verify_connection.py")
     print("\n✅ Environment setup complete.\n")
 
 

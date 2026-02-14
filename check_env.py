@@ -1,7 +1,7 @@
 
-import sys
-import platform
 import os
+import platform
+import sys
 
 try:
     import nautilus_trader

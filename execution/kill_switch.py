@@ -1,5 +1,4 @@
-"""
-kill_switch.py — Emergency: flatten all positions and cancel all pending orders.
+"""kill_switch.py — Emergency: flatten all positions and cancel all pending orders.
 
 Directive: 07_live_deployment.md
 

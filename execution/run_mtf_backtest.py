@@ -9,9 +9,9 @@ Directive: Alpha Research Loop (VectorBT).md
 """
 
 import sys
+import tomllib
 from pathlib import Path
 
-import tomllib
 import numpy as np
 import pandas as pd
 
@@ -36,7 +36,6 @@ except ImportError:
     sys.exit(1)
 
 from execution.spread_model import build_spread_series
-
 
 # ─────────────────────────────────────────────────────────────────────
 # Config loaders
@@ -147,7 +146,7 @@ def compute_confluence_score(
     weighted_signals: list[pd.Series] = []
     total_weight = 0.0
 
-    print(f"\n  Computing signals per timeframe:")
+    print("\n  Computing signals per timeframe:")
     for tf in timeframes:
         tf_config = mtf_config.get(tf, {})
         weight = weights.get(tf, 0.0)
@@ -365,7 +364,7 @@ def main() -> None:
     print(f"{'='*60}")
     print(f"  Timeframes: {', '.join(timeframes)}")
     print(f"  Threshold:  ±{threshold}")
-    print(f"  Direction:  LONG + SHORT")
+    print("  Direction:  LONG + SHORT")
 
     # ── Compute confluence score ──
     confluence, primary_df = compute_confluence_score(pair, mtf_config, timeframes)
@@ -383,7 +382,7 @@ def main() -> None:
     is_conf = confluence.iloc[:split_idx]
     oos_conf = confluence.iloc[split_idx:]
 
-    print(f"\n  📐 Data split:")
+    print("\n  📐 Data split:")
     print(f"     IS:  {len(is_close)} bars "
           f"({is_close.index.min().date()} → {is_close.index.max().date()})")
     print(f"     OOS: {len(oos_close)} bars "
@@ -393,14 +392,14 @@ def main() -> None:
     long_signals = (confluence >= threshold).sum()
     short_signals = (confluence <= -threshold).sum()
     neutral = len(confluence) - long_signals - short_signals
-    print(f"\n  📡 Signal distribution (full period):")
+    print("\n  📡 Signal distribution (full period):")
     print(f"     Long:    {long_signals:>5d} bars ({long_signals/len(confluence)*100:.1f}%)")
     print(f"     Short:   {short_signals:>5d} bars ({short_signals/len(confluence)*100:.1f}%)")
     print(f"     Neutral: {neutral:>5d} bars ({neutral/len(confluence)*100:.1f}%)")
 
     # ── In-Sample Backtest ──
     print(f"\n{'─'*60}")
-    print(f"  ▶ IN-SAMPLE BACKTEST")
+    print("  ▶ IN-SAMPLE BACKTEST")
     print(f"{'─'*60}")
 
     is_results = run_backtest(is_close, is_conf, threshold, fees=avg_spread)
@@ -416,7 +415,7 @@ def main() -> None:
 
     # ── Out-of-Sample Backtest ──
     print(f"\n{'─'*60}")
-    print(f"  ▶ OUT-OF-SAMPLE BACKTEST")
+    print("  ▶ OUT-OF-SAMPLE BACKTEST")
     print(f"{'─'*60}")
 
     oos_results = run_backtest(oos_close, oos_conf, threshold, fees=avg_spread)
@@ -431,7 +430,7 @@ def main() -> None:
 
     # ── Parity Check ──
     print(f"\n{'─'*60}")
-    print(f"  ▶ IS vs OOS PARITY CHECK")
+    print("  ▶ IS vs OOS PARITY CHECK")
     print(f"{'─'*60}")
 
     for label, is_s, oos_s in [
@@ -458,7 +457,7 @@ def main() -> None:
 
     # ── Final summary ──
     print(f"\n{'='*60}")
-    print(f"  ✅ MTF Confluence Backtest Complete")
+    print("  ✅ MTF Confluence Backtest Complete")
     print(f"{'='*60}")
     print(f"  Reports: {REPORTS_DIR}")
     print()

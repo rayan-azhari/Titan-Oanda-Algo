@@ -1,5 +1,4 @@
-"""
-nautilus_oanda.instruments
+"""nautilus_oanda.instruments
 --------------------------
 
 Instrument provider for OANDA.
@@ -11,15 +10,11 @@ from typing import List
 import oandapyV20
 import oandapyV20.endpoints.accounts as accounts
 from nautilus_trader.model.currencies import Currency
-from nautilus_trader.model.instruments import CurrencyPair
-from nautilus_trader.model.identifiers import InstrumentId
-from nautilus_trader.model.identifiers import Symbol
-from nautilus_trader.model.identifiers import Venue
-from nautilus_trader.model.objects import Price
-from nautilus_trader.model.objects import Quantity
+from nautilus_trader.model.identifiers import InstrumentId, Symbol, Venue
+from nautilus_trader.model.instruments.currency_pair import CurrencyPair
+from nautilus_trader.model.objects import Price, Quantity
 
 from .config import OandaInstrumentProviderConfig
-from .parsing import get_environment_url
 
 
 class OandaInstrumentProvider:
@@ -48,39 +43,56 @@ class OandaInstrumentProvider:
             # Nautilus symbol: EUR/USD
             oanda_name = inst["name"]
             base, quote = oanda_name.split("_")
-            
+
             # Create Identifiers
             venue = Venue("OANDA")
             symbol = Symbol(f"{base}/{quote}")
             instrument_id = InstrumentId(symbol, venue)
-            
+
             # Parse precision and limits
             display_precision = inst["displayPrecision"]
             tick_size = Decimal(10) ** -display_precision
-            
+
             # Lot size - OANDA allows 1 unit, but standard lot is 100,000
             # We set lot_size to 1 for OANDA (micro-lots/units)
-            lot_size = Quantity(1, precision=0) 
-            
+            lot_size = Quantity(1, precision=0)
+
             # create instrument
             native_symbol = Symbol(oanda_name)
+
+            # Use from_dict to handle internal CurrencyPair structure robustly
+            margin_rate = inst.get("marginRate", "0.02")
             
-            currency_pair = CurrencyPair(
-                instrument_id=instrument_id,
-                native_symbol=native_symbol,
-                currency_base=Currency(base),
-                currency_quote=Currency(quote),
-                price_precision=display_precision,
-                size_precision=0,  # OANDA units are integers
-                price_increment=Price(tick_size, precision=display_precision),
-                size_increment=lot_size,
-                lot_size=lot_size,
-                max_quantity=Quantity(1_000_000_000, precision=0), # Arbitrary large cap
-                min_quantity=Quantity(1, precision=0),
-                im_factor=Decimal(inst.get("marginRate", "0.02")),
-                mm_factor=Decimal(inst.get("marginRate", "0.02")), # Approx same
-            )
-            
+            inst_dict = {
+                "id": str(instrument_id),
+                "symbol": oanda_name,
+                "raw_symbol": oanda_name,
+                "venue": "OANDA",
+                "base_currency": base,
+                "quote_currency": quote,
+                "multiplier": "1",
+                "price_precision": int(display_precision),
+                "size_precision": 0,
+                "price_increment": str(tick_size),
+                "size_increment": "1",
+                "lot_size": "1",
+                "max_quantity": inst.get("maximumOrderUnits", "1000000000"),
+                "min_quantity": inst.get("minimumOrderUnits", "1"),
+                "max_price": "100000.00000",
+                "min_price": "0.00001",
+                "max_notional": f"1000000000.00 {quote}",
+                "min_notional": f"1.00 {quote}",
+                "maker_fee": "0.0000",
+                "taker_fee": "0.0000",
+                "ts_event": 0,
+                "ts_init": 0,
+                "margin_init": str(margin_rate),
+                "margin_maint": str(margin_rate),
+                "info": {},
+            }
+
+            currency_pair = CurrencyPair.from_dict(inst_dict)
+
             nautilus_instruments.append(currency_pair)
-            
+
         return nautilus_instruments

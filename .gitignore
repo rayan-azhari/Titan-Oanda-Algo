@@ -30,3 +30,11 @@ Thumbs.db
 
 # Jupyter
 .ipynb_checkpoints/
+
+# ML Models
+*.joblib
+models/*.joblib
+
+# Test Outputs
+pytest_output*.txt
+test_currency_pair.py

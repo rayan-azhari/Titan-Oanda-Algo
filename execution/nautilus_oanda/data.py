@@ -1,5 +1,4 @@
-"""
-nautilus_oanda.data
+"""nautilus_oanda.data
 -------------------
 
 Data client for OANDA (streaming).
@@ -11,17 +10,13 @@ from typing import Optional
 
 import oandapyV20
 import oandapyV20.endpoints.pricing as pricing
-from nautilus_trader.common.component import LiveDataClient
-from nautilus_trader.common.component import TimeEvent
+from nautilus_trader.live.data_client import LiveDataClient
 from nautilus_trader.model.data import QuoteTick
 from nautilus_trader.model.identifiers import InstrumentId
-from nautilus_trader.model.identifiers import Venue
-from nautilus_trader.model.objects import Price
-from nautilus_trader.model.objects import Quantity
+from nautilus_trader.model.objects import Price, Quantity
 
 from .config import OandaDataClientConfig
-from .parsing import parse_datetime
-from .parsing import parse_instrument_id
+from .parsing import parse_datetime, parse_instrument_id
 
 
 class OandaDataClient(LiveDataClient):
@@ -50,7 +45,7 @@ class OandaDataClient(LiveDataClient):
         """Connect to OANDA stream."""
         if self._stream_task:
             return
-        
+
         # Start the streaming loop
         self._stream_task = self._loop.create_task(self._stream_quotes())
         self._set_connected(True)
@@ -70,7 +65,7 @@ class OandaDataClient(LiveDataClient):
         """Subscribe to an instrument."""
         if instrument_id in self._subscribed_instruments:
             return
-        
+
         self._subscribed_instruments.add(instrument_id)
         # Restart stream with new subscription list
         # OANDA requires all instruments in one request
@@ -89,7 +84,7 @@ class OandaDataClient(LiveDataClient):
         """Restart the stream with updated subscriptions."""
         if not self._connected:
             return
-            
+
         # Cancel current stream
         if self._stream_task:
             self._stream_task.cancel()
@@ -97,7 +92,7 @@ class OandaDataClient(LiveDataClient):
                 await self._stream_task
             except asyncio.CancelledError:
                 pass
-        
+
         # Start new stream if we have subscriptions
         if self._subscribed_instruments:
             self._stream_task = self._loop.create_task(self._stream_quotes())
@@ -174,10 +169,10 @@ class OandaDataClient(LiveDataClient):
             for line in self._api.request(request):
                 if "type" in line and line["type"] == "PRICE":
                     self._parse_quote(line)
-                # Ensure we yield to check for cancellation? 
+                # Ensure we yield to check for cancellation?
                 # Thread cancellation is hard. We rely on the socket closing or specific check.
                 # Oandapy might not support clean exit from iterator easily.
-                
+
         except Exception as e:
             self._log.error(f"Stream consumption failed: {e}")
 
@@ -185,10 +180,10 @@ class OandaDataClient(LiveDataClient):
         """Parse JSON quote and publish QuoteTick."""
         # data example:
         # {'type': 'PRICE', 'time': '2023-10-27T...', 'bids': [{'price': '1.05', 'liquidity': 1000000}], ...}
-        
+
         instrument_id = parse_instrument_id(data["instrument"])
         timestamp = parse_datetime(data["time"])
-        
+
         # Bid/Ask Mapping:
         # We use the first level of depth (index 0) which represents the best available price.
         # Liquidity is cast to standard integer units.
@@ -196,7 +191,7 @@ class OandaDataClient(LiveDataClient):
         ask = Decimal(data["asks"][0]["price"])
         bid_size = int(data["bids"][0]["liquidity"])
         ask_size = int(data["asks"][0]["liquidity"])
-        
+
         tick = QuoteTick(
             instrument_id=instrument_id,
             bid_price=Price(bid, precision=None),
@@ -206,7 +201,7 @@ class OandaDataClient(LiveDataClient):
             ts_event=timestamp.value, # Nanoseconds (uint64)
             ts_init=self._clock.timestamp_ns(),
         )
-        
+
         # Thread Safety:
         # This method runs in the executor thread. We must properly schedule
         # the data handling on the main asyncio event loop using `call_soon_threadsafe`

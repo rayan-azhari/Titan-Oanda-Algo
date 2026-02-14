@@ -1,5 +1,4 @@
-"""
-nautilus_oanda package
+"""nautilus_oanda package
 ----------------------
 
 NautilusTrader adapter for OANDA (v20 API).
@@ -10,9 +9,7 @@ Components:
 - OandaExecutionClient: Handles order execution.
 """
 
-from .config import OandaDataClientConfig
-from .config import OandaExecutionClientConfig
-from .config import OandaInstrumentProviderConfig
+from .config import OandaDataClientConfig, OandaExecutionClientConfig, OandaInstrumentProviderConfig
 from .data import OandaDataClient
 from .execution import OandaExecutionClient
 from .instruments import OandaInstrumentProvider

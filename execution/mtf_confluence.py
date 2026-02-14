@@ -16,10 +16,9 @@ Use only in emergency situations where the algorithm is out of control.
 """
 
 import sys
+import tomllib
 from pathlib import Path
 
-import tomllib
-import numpy as np
 import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -256,7 +255,7 @@ def main() -> None:
         inst_config = tomllib.load(f)
 
     pairs = inst_config.get("instruments", {}).get("pairs", [])
-    print(f"🔀 Multi-Timeframe Confluence Engine\n")
+    print("🔀 Multi-Timeframe Confluence Engine\n")
     print(f"  Weights: H1={weights.get('H1', 0.2)}, "
           f"H4={weights.get('H4', 0.4)}, D={weights.get('D', 0.4)}\n")
 

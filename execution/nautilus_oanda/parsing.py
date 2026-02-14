@@ -1,22 +1,14 @@
-"""
-nautilus_oanda.parsing
+"""nautilus_oanda.parsing
 ----------------------
 
 Utilities for parsing OANDA API data into NautilusTrader objects.
 """
 
 from decimal import Decimal
-from typing import Optional
 
 import pandas as pd
-from nautilus_trader.model.currencies import Currency
-from nautilus_trader.model.enums import AssetClass
-from nautilus_trader.model.identifiers import InstrumentId
-from nautilus_trader.model.identifiers import Symbol
-from nautilus_trader.model.identifiers import Venue
-from nautilus_trader.model.objects import Price
-from nautilus_trader.model.objects import Quantity
-
+from nautilus_trader.model.identifiers import InstrumentId, Symbol, Venue
+from nautilus_trader.model.objects import Price, Quantity
 
 ENVIRONMENT_URLS = {
     "practice": {
@@ -56,9 +48,10 @@ def parse_datetime(oanda_time: str) -> pd.Timestamp:
 
 def parse_price(price_str: str) -> Price:
     """Convert OANDA price string to Nautilus Price."""
-    return Price(Decimal(price_str), precision=None)  # Precision inferred
+    return Price.from_str(price_str)
 
 
 def parse_quantity(units_str: str) -> Quantity:
     """Convert OANDA units string to Nautilus Quantity."""
-    return Quantity(Decimal(units_str), precision=0)  # OANDA units are integers? Verify later.
+    # Use from_str to handle potential decimal points in units (if any, though usually int)
+    return Quantity.from_str(units_str)

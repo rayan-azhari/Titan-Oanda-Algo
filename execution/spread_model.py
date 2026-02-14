@@ -9,10 +9,9 @@ with no consideration for variable spread or slippage.
 """
 
 import sys
-from decimal import Decimal
+import tomllib
 from pathlib import Path
 
-import tomllib
 import numpy as np
 import pandas as pd
 

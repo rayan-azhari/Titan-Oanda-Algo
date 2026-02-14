@@ -11,13 +11,12 @@ Directive: Ensemble Strategy Framework.md
 """
 
 import sys
+import tomllib
 from decimal import Decimal
 from pathlib import Path
 
-import tomllib
-import numpy as np
-import pandas as pd
 import joblib
+import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -283,7 +282,7 @@ def main() -> None:
     signal_label = {1: "📈 BUY", -1: "📉 SELL", 0: "⏸️ HOLD"}
 
     print(f"  Ensemble Signal: {signal_label.get(ensemble, 'UNKNOWN')}")
-    print(f"  Individual:")
+    print("  Individual:")
     for name, sig in individual.items():
         print(f"    {name:30s} → {signal_label.get(sig, 'UNKNOWN')}")
 

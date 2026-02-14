@@ -8,8 +8,6 @@ Directive: Nautilus-Oanda Adapter Construction.md (Phase 1)
 
 from decimal import Decimal
 
-import pytest
-
 from execution.nautilus_oanda.parsing import (
     get_environment_url,
     parse_instrument_id,

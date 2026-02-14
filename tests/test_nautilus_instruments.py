@@ -18,7 +18,6 @@ load_dotenv(PROJECT_ROOT / ".env")
 from execution.nautilus_oanda.config import OandaInstrumentProviderConfig
 from execution.nautilus_oanda.instruments import OandaInstrumentProvider
 
-
 # Mark the entire module as requiring live credentials
 pytestmark = pytest.mark.skipif(
     not os.getenv("OANDA_ACCOUNT_ID") or not os.getenv("OANDA_ACCESS_TOKEN"),

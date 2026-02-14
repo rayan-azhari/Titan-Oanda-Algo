@@ -1,5 +1,4 @@
-"""
-run_nautilus_live.py
+"""run_nautilus_live.py
 --------------------
 
 Live trading entry point using NautilusTrader and the OANDA adapter.
@@ -7,36 +6,34 @@ Authenticates, configures the trading node, registers custom OANDA components,
 loads instruments, and starts the event loop.
 """
 
-import asyncio
 import logging
 import signal
 import sys
 from datetime import datetime, timezone
-from decimal import Decimal
 from pathlib import Path
 
-from nautilus_trader.config import LiveDataClientConfig
-from nautilus_trader.config import LiveExecutionClientConfig
 from nautilus_trader.config import TradingNodeConfig
 from nautilus_trader.live.node import TradingNode
-from nautilus_trader.model.identifiers import Venue
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 # Load Environment
 from dotenv import load_dotenv
+
 load_dotenv(PROJECT_ROOT / ".env")
 
 import os
-from execution.nautilus_oanda.config import OandaDataClientConfig
-from execution.nautilus_oanda.config import OandaExecutionClientConfig
-from execution.nautilus_oanda.config import OandaInstrumentProviderConfig
-from execution.nautilus_oanda.instruments import OandaInstrumentProvider
+
+from execution.nautilus_oanda.config import (
+    OandaDataClientConfig,
+    OandaExecutionClientConfig,
+    OandaInstrumentProviderConfig,
+)
 from execution.nautilus_oanda.data import OandaDataClient
 from execution.nautilus_oanda.execution import OandaExecutionClient
+from execution.nautilus_oanda.instruments import OandaInstrumentProvider
 from strategies.simple_printer import SimplePrinter, SimplePrinterConfig
-
 
 # ---------------------------------------------------------------------------
 # Structured logging — file + console, matching run_live.py pattern
@@ -95,13 +92,13 @@ def main():
         access_token=access_token,
         environment=environment,
     )
-    
+
     exec_config = OandaExecutionClientConfig(
         account_id=account_id,
         access_token=access_token,
         environment=environment,
     )
-    
+
     inst_config = OandaInstrumentProviderConfig(
         account_id=account_id,
         access_token=access_token,
@@ -111,12 +108,12 @@ def main():
     # 3. Register Clients
     # We register factories that default to the configuration defined above.
     # This pattern allows the trading node to instantiate clients as needed.
-    
+
     node.add_data_client_factory(
-        "OANDA", 
+        "OANDA",
         lambda loop, msgbus, cache, clock: OandaDataClient(loop, data_config, msgbus, cache, clock)
     )
-    
+
     node.add_execution_client_factory(
         "OANDA",
         lambda loop, msgbus, cache, clock: OandaExecutionClient(loop, exec_config, msgbus, cache, clock)
@@ -127,7 +124,7 @@ def main():
     print("⏳ Loading instruments from OANDA...")
     instruments = provider.load_all()
     print(f"✅ Loaded {len(instruments)} instruments.")
-    
+
     for inst in instruments:
         node.add_instrument(inst)
 
@@ -142,12 +139,12 @@ def main():
 
     # 6. Build & Run
     print("🚀 Starting Trading Node...")
-    
+
     # Register shutdown signal
     def stop_node(*args):
         print("\n🛑 Stopping...")
         node.stop()
-        
+
     signal.signal(signal.SIGINT, stop_node)
     signal.signal(signal.SIGTERM, stop_node)
 

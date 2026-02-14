@@ -1,5 +1,4 @@
-"""
-run_live.py — Live / Paper trading engine.
+"""run_live.py — Live / Paper trading engine.
 
 Connects to OANDA, loads the trained model, generates signals in real-time,
 and executes trades with risk management.
@@ -12,11 +11,10 @@ import logging
 import os
 import sys
 import time
+import tomllib
 from datetime import datetime, timezone
-from decimal import Decimal
 from pathlib import Path
 
-import tomllib
 import joblib
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -27,11 +25,8 @@ from dotenv import load_dotenv
 load_dotenv(PROJECT_ROOT / ".env")
 
 import oandapyV20
-import oandapyV20.endpoints.orders as orders
-import oandapyV20.endpoints.positions as positions
-import oandapyV20.endpoints.pricing as pricing
 
-from execution.rate_limiter import rate_limited_call, order_limiter, api_limiter
+from execution.rate_limiter import api_limiter, order_limiter
 
 MODELS_DIR = PROJECT_ROOT / "models"
 LOGS_DIR = PROJECT_ROOT / ".tmp" / "logs"

@@ -12,6 +12,7 @@ Usage:
 import os
 import sys
 import time
+import tomllib
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -19,7 +20,6 @@ from pathlib import Path
 import oandapyV20
 import oandapyV20.endpoints.instruments as instruments_ep
 import pandas as pd
-import tomllib
 
 # ---------------------------------------------------------------------------
 # Project setup
@@ -28,6 +28,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from dotenv import load_dotenv
+
 load_dotenv(PROJECT_ROOT / ".env")
 
 ACCOUNT_ID = os.getenv("OANDA_ACCOUNT_ID")

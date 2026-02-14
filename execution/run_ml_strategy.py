@@ -20,7 +20,6 @@ from pathlib import Path
 import joblib
 import numpy as np
 import pandas as pd
-import tomllib
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -40,6 +39,7 @@ except ImportError:
     print("  ⚠ vectorbt not installed — VBT backtest will be skipped.")
 
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
+
 try:
     import xgboost as xgb
 except ImportError:
@@ -235,7 +235,7 @@ def walk_forward_splits(n: int, n_splits: int = 5, min_train: float = 0.4):
 
 def train_and_evaluate(X: pd.DataFrame, y: pd.Series, close: pd.Series):
     """Train ML models with walk-forward CV and return the best one."""
-    from sklearn.metrics import accuracy_score, classification_report
+    from sklearn.metrics import accuracy_score
 
     models = {
         "GradientBoosting": GradientBoostingClassifier(
@@ -338,7 +338,7 @@ def train_and_evaluate(X: pd.DataFrame, y: pd.Series, close: pd.Series):
         "importance": importances,
     }).sort_values("importance", ascending=False)
 
-    print(f"\n  📊 Top 15 Features:")
+    print("\n  📊 Top 15 Features:")
     for _, row in imp_df.head(15).iterrows():
         bar = "█" * int(row["importance"] * 200)
         print(f"     {row['feature']:20s} {row['importance']:.4f} {bar}")
@@ -359,11 +359,11 @@ def optimize_exits(
     """Optimize exit strategy (Fixed vs Trailing Stop) using OOS signals."""
     if vbt is None:
         return {}
-    
+
     # 2 is LONG, 0 is SHORT
     long_entries = pd.Series(preds == 2, index=close.index)
     short_entries = pd.Series(preds == 0, index=close.index)
-    
+
     # We will close on opposite signal as a base, but stops will override
     long_exits = pd.Series(preds == 0, index=close.index)
     short_exits = pd.Series(preds == 2, index=close.index)
@@ -423,10 +423,10 @@ def optimize_exits(
     # Find best
     if not results:
         return {}
-    
+
     best = max(results, key=lambda x: x["sharpe"])
     print(f"\n  🏆 Best Exit: {best['type']} Stop {best['stop']:.1%} (Sharpe {best['sharpe']:.3f})")
-    
+
     return best
 
 
@@ -445,7 +445,7 @@ def backtest_ml_predictions(
     close_is, close_oos = close.iloc[:split], close.iloc[split:]
     y_is = y.iloc[:split]
 
-    model.fit(X_is, y.iloc[:split]) 
+    model.fit(X_is, y.iloc[:split])
     preds_oos = model.predict(X_oos)
 
     # 1. Base Backtest (Signal Only)
@@ -453,7 +453,7 @@ def backtest_ml_predictions(
     n_s = (preds_oos == 0).sum()
     n_f = (preds_oos == 1).sum()
     print(f"    OOS predictions: LONG={n_l}  SHORT={n_s}  FLAT={n_f}")
-    
+
     long_entries = pd.Series(preds_oos == 2, index=close_oos.index)
     long_exits = pd.Series(preds_oos != 2, index=close_oos.index)
     short_entries = pd.Series(preds_oos == 0, index=close_oos.index)
@@ -473,7 +473,7 @@ def backtest_ml_predictions(
     )
 
     print(f"\n  {'─'*60}")
-    print(f"  📈 VBT OOS Backtest (Base Signals)")
+    print("  📈 VBT OOS Backtest (Base Signals)")
     print(f"  {'─'*60}")
 
     for label, pf in [("LONG", long_pf), ("SHORT", short_pf)]:
@@ -501,9 +501,9 @@ def run_pipeline(base_tf: str = "H4"):
     print(f"{'='*60}")
 
     # ── Step 1: Load data ──
-    print(f"\n  Step 1: Loading data...")
+    print("\n  Step 1: Loading data...")
     data_dir = Path("data")
-    
+
     # Load base timeframe
     df = load_ohlcv("EUR_USD", base_tf)
     if df is None:
@@ -516,7 +516,7 @@ def run_pipeline(base_tf: str = "H4"):
     # If H4, context is D, W
     context_data = {}
     possible_contexts = ["H4", "D", "W"]
-    
+
     # Only load contexts that are higher than base_tf
     # Simple hierarchy: H1 < H4 < D < W
     hierarchy = {"H1": 0, "H4": 1, "D": 2, "W": 3}
@@ -532,12 +532,12 @@ def run_pipeline(base_tf: str = "H4"):
     print(f"    Base: {base_tf} ({len(df)} bars) {df.index.min().date()} → {df.index.max().date()}")
 
     # ── Step 2: Build features ──
-    print(f"\n  Step 2: Building feature matrix...")
+    print("\n  Step 2: Building feature matrix...")
     feats = build_features(df, context_data)
     print(f"    {len(feats.columns)} features built")
 
     # ── Step 3: Build target ──
-    print(f"\n  Step 3: Engineering target (3-class: LONG/SHORT/FLAT)...")
+    print("\n  Step 3: Engineering target (3-class: LONG/SHORT/FLAT)...")
     close = df["close"]
     atr_series = atr(df, 14)
     # Lower threshold to 0.5 ATR to catch more moves
@@ -557,14 +557,14 @@ def run_pipeline(base_tf: str = "H4"):
     print(f"    Target distribution:  LONG={n_long} ({n_long/len(target)*100:.1f}%)  "
           f"SHORT={n_short} ({n_short/len(target)*100:.1f}%)  "
           f"FLAT={n_flat} ({n_flat/len(target)*100:.1f}%)")
-    
+
     if len(feats) < 100:
         print("  ⚠ Not enough data to train. Skipping.")
         return
 
     # ── Step 4: Train models ──
-    print(f"\n  Step 4: Training ML models with walk-forward CV...")
-    
+    print("\n  Step 4: Training ML models with walk-forward CV...")
+
     # Delegate to train_and_evaluate which handles the loop and best model selection
     best_model, best_model_name, results, imp_df = train_and_evaluate(
         feats, target, close_aligned
@@ -574,13 +574,13 @@ def run_pipeline(base_tf: str = "H4"):
     print(f"\n  [BEST] Best model selected: {best_model_name} (Sharpe={best_model_score:.3f})")
 
     # ── Step 5: VBT Backtest ──
-    print(f"\n  Step 5: Running VBT backtest on OOS period...")
-    
+    print("\n  Step 5: Running VBT backtest on OOS period...")
+
     # Run backtest/exit optimization
     # Pass freq to ensure VBT calculates Sharpe correctly
     freq_map = {"H1": "1h", "H4": "4h"}
     vbt_freq = freq_map.get(base_tf, "1h")
-    
+
     best_exit = backtest_ml_predictions(best_model, feats, target, close_aligned, freq=vbt_freq)
 
     # ── Step 6: Save model ──
@@ -607,7 +607,7 @@ def run_pipeline(base_tf: str = "H4"):
     print(f"  [SAVE] Report saved → {report_path.name}")
 
     print(f"\n{'='*60}")
-    print(f"  [DONE] ML Strategy Discovery Complete")
+    print("  [DONE] ML Strategy Discovery Complete")
     print(f"{'='*60}\n")
 
 
@@ -627,18 +627,18 @@ def main():
              traceback.print_exc()
 
     print(f"\n{'='*60}")
-    print(f"  Multi-Timeframe Scan Complete")
+    print("  Multi-Timeframe Scan Complete")
     print(f"{'='*60}")
-    
+
     print(f"  {'Timeframe':<10} {'Model':<18} {'Exit Type':<12} {'Stop':<8} {'Sharpe (OOS)':<12}")
     print(f"  {'-'*60}")
-    
+
     for res in results:
         exit_strat = res.get('best_exit', {})
         # Handle cases where best_exit might be empty or None
         if not exit_strat:
             continue
-            
+
         print(f"  {res['base_tf']:<10} {res['model']:<18} "
               f"{exit_strat.get('type', 'N/A'):<12} "
               f"{exit_strat.get('stop', 0):<8.1%} "

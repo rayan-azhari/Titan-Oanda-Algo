@@ -144,6 +144,30 @@ uv run python execution/run_nautilus_live.py
 | **NautilusTrader** | Final validation with real spread/slippage | Free |
 | **VectorBT Pro** | Optional upgrade for large-scale optimisation | ~$25/mo |
 
+## Testing & CI/CD
+
+This project uses **GitHub Actions** for Continuous Integration. Before pushing code, ensure you run the checks locally.
+
+### 1. Install Test Dependencies
+The `dev` environment is optional. Install it explicitly:
+```bash
+uv sync --extra dev
+```
+
+### 2. Run Linter (Ruff)
+Checks for formatting and PEP 8 compliance.
+```bash
+uv run ruff check .
+# Auto-fix issues:
+uv run ruff check --fix .
+```
+
+### 3. Run Unit Tests (Pytest)
+Executes all tests in the `tests/` directory.
+```bash
+uv run pytest tests/ -v
+```
+
 ## Roadmap
 
 - [x] Ensemble / multi-strategy framework

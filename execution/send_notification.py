@@ -76,7 +76,7 @@ def main() -> None:
         message = "This is a test notification from the Titan-Oanda-Algo Guardian agent."
         severity = "info"
 
-    print(f"📢 Sending Slack notification...\n")
+    print("📢 Sending Slack notification...\n")
     send_slack_message(message, severity=severity)
     print("\n✅ Done.\n")
 

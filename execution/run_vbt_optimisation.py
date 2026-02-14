@@ -10,9 +10,9 @@ Directive: Alpha Research Loop (VectorBT).md
 """
 
 import sys
+import tomllib
 from pathlib import Path
 
-import tomllib
 import numpy as np
 import pandas as pd
 
@@ -35,7 +35,7 @@ except ImportError:
     print("ERROR: plotly is not installed. Run `uv sync` first.")
     sys.exit(1)
 
-from execution.spread_model import build_spread_series, build_total_cost_series
+from execution.spread_model import build_spread_series
 
 # Mapping OANDA granularity codes to pandas frequency strings.
 # VBT needs this to calculate annualised Sharpe ratios.
@@ -243,7 +243,7 @@ def main() -> None:
         print(f"  📊 Using session-weighted spread: {avg_spread*10000:.1f} pips\n")
 
         # --- In-Sample Optimisation ---
-        print(f"  ▶ In-Sample Optimisation...")
+        print("  ▶ In-Sample Optimisation...")
         is_portfolio = run_rsi_optimisation(
             is_df["close"], rsi_windows, entry_thresholds, fees=avg_spread
         )
@@ -257,13 +257,13 @@ def main() -> None:
             print(f"  ⚠️  No stable candidates for {pair}. Skipping OOS.")
             continue
 
-        print(f"\n  🏆 Top IS Plateau Candidates:")
+        print("\n  🏆 Top IS Plateau Candidates:")
         for _, row in candidates.iterrows():
             print(f"     RSI({int(row['rsi_window'])}) < {int(row['entry_threshold'])}"
                   f"  Sharpe={row['sharpe']:.3f}  NeighMin={row['neighbour_min']:.3f}")
 
         # --- Out-of-Sample Validation ---
-        print(f"\n  ▶ Out-of-Sample Validation...")
+        print("\n  ▶ Out-of-Sample Validation...")
         oos_portfolio = run_rsi_optimisation(
             oos_df["close"], rsi_windows, entry_thresholds, fees=avg_spread
         )
@@ -272,7 +272,7 @@ def main() -> None:
         generate_sharpe_heatmap(oos_sharpe_2d, pair, "OOS")
 
         # --- Parity Check ---
-        print(f"\n  ▶ IS vs OOS Parity Check:")
+        print("\n  ▶ IS vs OOS Parity Check:")
         for _, row in candidates.iterrows():
             w = int(row["rsi_window"])
             t = int(row["entry_threshold"])
@@ -283,8 +283,8 @@ def main() -> None:
             print(f"     RSI({w})<{t}: IS={is_val:.3f} OOS={oos_val:.3f} "
                   f"Ratio={ratio:.2f} {status}")
 
-    print(f"\n✅ VBT optimisation complete.")
-    print(f"   Transfer validated results to config/strategy_config.toml.\n")
+    print("\n✅ VBT optimisation complete.")
+    print("   Transfer validated results to config/strategy_config.toml.\n")
 
 
 if __name__ == "__main__":

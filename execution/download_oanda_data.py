@@ -12,11 +12,9 @@ Directive: Alpha Research Loop (VectorBT Pro).md
 import os
 import sys
 import time
-from datetime import datetime, timezone
+import tomllib
 from decimal import Decimal
 from pathlib import Path
-
-import tomllib
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))

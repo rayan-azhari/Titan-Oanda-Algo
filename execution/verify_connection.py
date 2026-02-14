@@ -1,5 +1,4 @@
-"""
-verify_connection.py — Validate OANDA API connectivity.
+"""verify_connection.py — Validate OANDA API connectivity.
 
 Reads credentials from .env and prints account summary + available instruments.
 Directive: 01_environment_setup.md

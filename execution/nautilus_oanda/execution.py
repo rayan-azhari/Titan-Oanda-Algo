@@ -1,42 +1,25 @@
-"""
-nautilus_oanda.execution
+"""nautilus_oanda.execution
 ------------------------
 
 Execution client for OANDA (orders & positions).
 """
 
 import asyncio
-import logging
 from decimal import Decimal
 from typing import Optional
 
 import oandapyV20
 import oandapyV20.endpoints.orders as orders
 import oandapyV20.endpoints.transactions as transactions
-from nautilus_trader.common.component import LiveExecutionClient
-from nautilus_trader.model.enums import LiquiditySide
-from nautilus_trader.model.enums import OrderSide
-from nautilus_trader.model.enums import OrderType
-from nautilus_trader.model.enums import TimeInForce
-from nautilus_trader.model.events import OrderAccepted
-from nautilus_trader.model.events import OrderCanceled
-from nautilus_trader.model.events import OrderFilled
-from nautilus_trader.model.events import OrderRejected
-from nautilus_trader.model.identifiers import AccountId
-from nautilus_trader.model.identifiers import ClientOrderId
-from nautilus_trader.model.identifiers import TradeId
-from nautilus_trader.model.identifiers import VenueOrderId
-from nautilus_trader.model.objects import Currency
-from nautilus_trader.model.objects import Money
-from nautilus_trader.model.objects import Price
-from nautilus_trader.model.objects import Quantity
-from nautilus_trader.model.orders import LimitOrder
-from nautilus_trader.model.orders import MarketOrder
-from nautilus_trader.model.orders import Order
+from nautilus_trader.live.execution_client import LiveExecutionClient
+from nautilus_trader.model.enums import LiquiditySide, OrderSide
+from nautilus_trader.model.events import OrderCanceled, OrderFilled
+from nautilus_trader.model.identifiers import AccountId, ClientOrderId, TradeId, VenueOrderId
+from nautilus_trader.model.objects import Currency, Money, Price, Quantity
+from nautilus_trader.model.orders import LimitOrder, Order
 
 from .config import OandaExecutionClientConfig
-from .parsing import parse_datetime
-from .parsing import parse_instrument_id
+from .parsing import parse_datetime, parse_instrument_id
 
 
 class OandaExecutionClient(LiveExecutionClient):
@@ -231,10 +214,10 @@ class OandaExecutionClient(LiveExecutionClient):
         """Submit an order to OANDA."""
         # 1. Map Nautilus Order to OANDA dict
         data = self._map_order(order)
-        
+
         # 2. Send request
         r = orders.OrderCreate(self._account_id, data=data)
-        
+
         try:
             # The OANDA API request is blocking. We offload it to the executor
             # to avoid blocking the main asyncio event loop, which would freeze
@@ -245,14 +228,13 @@ class OandaExecutionClient(LiveExecutionClient):
             self._log.info(f"Order submitted: {response}")
             # Note: NautilusTrader core usually generates the OrderSubmitted event
             # upon successful return from this method.
-            
+
         except Exception as e:
             self._log.error(f"Order submission failed: {e}")
             # Generate OrderRejected event
 
     def _map_order(self, order: Order) -> dict:
         """Map Nautilus order to OANDA API format."""
-        
         # OANDA expects:
         # {
         #   "order": {
@@ -263,19 +245,19 @@ class OandaExecutionClient(LiveExecutionClient):
         #     "positionFill": "DEFAULT"
         #   }
         # }
-        
+
         units = int(order.quantity)
         if order.side == OrderSide.SELL:
             units = -units
-            
+
         oanda_symbol = order.instrument_id.symbol.value.replace("/", "_")
-        
+
         order_type = "MARKET"
         price = None
         if isinstance(order, LimitOrder):
             order_type = "LIMIT"
             price = f"{order.price}"
-            
+
         data = {
             "order": {
                 "units": str(units),
@@ -290,11 +272,11 @@ class OandaExecutionClient(LiveExecutionClient):
                 }
             }
         }
-        
+
         if price:
             data["order"]["price"] = price
             data["order"]["timeInForce"] = "GTC" # Limit orders usually GTC
-            
+
         return data
 
     async def cancel_order(self, command) -> None:

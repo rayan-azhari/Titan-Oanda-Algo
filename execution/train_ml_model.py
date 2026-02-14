@@ -9,10 +9,10 @@ Directive: Machine Learning Strategy Discovery.md
 
 import json
 import sys
+import tomllib
 from datetime import datetime, timezone
 from pathlib import Path
 
-import tomllib
 import joblib
 import numpy as np
 import pandas as pd
@@ -208,7 +208,7 @@ def main() -> None:
     sharpe_threshold = 1.5
     if avg_sharpe >= sharpe_threshold:
         version = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        model_path = MODELS_DIR / f"production_model_v1.joblib"
+        model_path = MODELS_DIR / "production_model_v1.joblib"
         joblib.dump(model, model_path)
         print(f"\n   💾 Model saved to {model_path} (Sharpe {avg_sharpe:.4f} ≥ {sharpe_threshold})")
     else:

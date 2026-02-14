@@ -7,9 +7,9 @@ Directive: Strategy Validation (Backtesting.py).md
 """
 
 import sys
+import tomllib
 from pathlib import Path
 
-import tomllib
 import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
