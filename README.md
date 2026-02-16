@@ -35,7 +35,11 @@ This project follows a **3-layer architecture** that separates *Probabilistic In
 ├── directives/                    ← SOPs
 │   ├── Alpha Research Loop (VectorBT).md
 │   ├── Machine Learning Strategy Discovery.md
+│   ├── Alpha Research Loop (VectorBT).md
+│   ├── Machine Learning Strategy Discovery.md
 │   ├── Nautilus-Oanda Adapter Construction.md
+│   ├── Nautilus Oanda Adapter.md          ← (Detailed API Docs)
+│   ├── Strategy Validation (Backtesting.py).md
 │   ├── Strategy Validation (Backtesting.py).md
 │   ├── Ensemble Strategy Framework.md
 │   ├── Multi-Timeframe Confluence.md      ← (SMA + RSI Optimized)

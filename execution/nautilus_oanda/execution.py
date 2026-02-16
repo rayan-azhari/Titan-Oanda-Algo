@@ -12,8 +12,21 @@ import oandapyV20
 import oandapyV20.endpoints.orders as orders
 import oandapyV20.endpoints.transactions as transactions
 from nautilus_trader.common.providers import InstrumentProvider
+from nautilus_trader.execution.reports import (
+    FillReport,
+    OrderStatusReport,
+    PositionStatusReport,
+)
 from nautilus_trader.live.execution_client import LiveExecutionClient
-from nautilus_trader.model.enums import AccountType, LiquiditySide, OmsType, OrderSide
+from nautilus_trader.model.enums import (
+    AccountType,
+    LiquiditySide,
+    OmsType,
+    OrderSide,
+    OrderStatus,
+    OrderType,
+    TimeInForce,
+)
 from nautilus_trader.model.events import OrderCanceled, OrderFilled
 from nautilus_trader.model.identifiers import (
     AccountId,
@@ -63,21 +76,29 @@ class OandaExecutionClient(LiveExecutionClient):
         self._config = config
         self._api = oandapyV20.API(access_token=config.access_token, environment=config.environment)
         self._account_id = config.account_id
+        # Base ExecutionClient expects self.account_id to be set for reports
+        # self.account_id = AccountId(f"OANDA-{config.account_id}") # Read-only
         self._stream_task: Optional[asyncio.Task] = None
 
-    async def connect(self):
+    @property
+    def account_id(self) -> AccountId:
+        return AccountId(f"OANDA-{self._account_id}")
+
+    def connect(self):
         """Connect to OANDA transactions stream."""
         if self._stream_task:
             return
         self._stream_task = self._loop.create_task(self._stream_transactions())
         self._set_connected(True)
 
-    async def disconnect(self):
+    def disconnect(self):
         """Disconnect from OANDA stream."""
         if self._stream_task:
             self._stream_task.cancel()
             try:
-                await self._stream_task
+                # We can't await here because disconnect is synchronous in base class.
+                # Just cancelling is usually enough for cleanup in asyncio.
+                pass
             except asyncio.CancelledError:
                 pass
             self._stream_task = None
@@ -319,3 +340,85 @@ class OandaExecutionClient(LiveExecutionClient):
             self._log.info(f"Cancel request sent for {oanda_order_id}: {response}")
         except Exception as e:
             self._log.error(f"Cancel request failed for {oanda_order_id}: {e}")
+
+    async def generate_order_status_reports(self, command) -> list[OrderStatusReport]:
+        """Fetch open orders and generate status reports (Reconciliation)."""
+        reports = []
+        try:
+            # Fetch all OPEN orders
+            r = orders.OrderList(self._account_id, params={"state": "PENDING"})
+            data = await self._loop.run_in_executor(None, lambda: self._api.request(r))
+
+            for o_data in data.get("orders", []):
+                # 1. Parsing
+                venue_order_id = VenueOrderId(str(o_data.get("id")))
+                instrument_id = parse_instrument_id(o_data.get("instrument", ""))
+
+                # Check Client ID (Nautilus ID)
+                client_ext = o_data.get("clientExtensions", {})
+                client_id_str = client_ext.get("id")
+
+                if not client_id_str:
+                    # Order not from Nautilus (or manual). Skip for now.
+                    continue
+
+                client_order_id = ClientOrderId(client_id_str)
+                timestamp = parse_datetime(o_data.get("createTime", ""))
+
+                # 2. Side/Qty
+                units = int(o_data.get("units", "0"))
+                side = OrderSide.BUY if units > 0 else OrderSide.SELL
+                qty = Quantity(abs(units), precision=0)  # Total qty
+
+                # OANDA "PENDING" orders are essentially OPEN or PARTIALLY_FILLED?
+                status = OrderStatus.OPEN
+
+                # Filled Qty: Hard to know from just the Order object in OANDA V20 without
+                # transaction history. We report 0 filled, Nautilus handles fills separately.
+                filled_qty = Quantity(0, precision=0)
+
+                # Price
+                price_str = o_data.get("price")
+                price = (
+                    Price(Decimal(price_str), precision=len(price_str.split(".")[-1]))
+                    if price_str
+                    else None
+                )
+
+                # Order Type Mapping
+                type_str = o_data.get("type", "MARKET")
+                order_type = OrderType.LIMIT if type_str == "LIMIT" else OrderType.MARKET
+
+                # 3. Create Report
+                report = OrderStatusReport(
+                    instrument_id=instrument_id,
+                    client_order_id=client_order_id,
+                    venue_order_id=venue_order_id,
+                    order_status=status,
+                    order_side=side,
+                    order_type=order_type,
+                    time_in_force=TimeInForce.GTC
+                    if o_data.get("timeInForce") == "GTC"
+                    else TimeInForce.FOK,  # Defaulting
+                    price=price,
+                    quantity=qty,
+                    filled_qty=filled_qty,  # Approximation
+                    avg_px=None,
+                    ts_accepted=timestamp.value,
+                    ts_last=timestamp.value,
+                    ts_init=self._clock.timestamp_ns(),
+                )
+                reports.append(report)
+
+        except Exception as e:
+            self._log.error(f"Failed to generate order status reports: {e}")
+
+        return reports
+
+    async def generate_fill_reports(self, command) -> list[FillReport]:
+        """Generate fill reports (Reconciliation). Stub: Return empty."""
+        return []
+
+    async def generate_position_status_reports(self, command) -> list[PositionStatusReport]:
+        """Generate position reports (Reconciliation). Stub: Return empty."""
+        return []

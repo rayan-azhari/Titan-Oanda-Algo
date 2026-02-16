@@ -10,6 +10,7 @@ from typing import Optional
 
 import oandapyV20
 import oandapyV20.endpoints.pricing as pricing
+from nautilus_trader.data.client import MarketDataClient
 from nautilus_trader.live.data_client import LiveDataClient
 from nautilus_trader.model.data import QuoteTick
 from nautilus_trader.model.identifiers import InstrumentId
@@ -19,7 +20,7 @@ from .config import OandaDataClientConfig
 from .parsing import parse_datetime, parse_instrument_id
 
 
-class OandaDataClient(LiveDataClient):
+class OandaDataClient(LiveDataClient, MarketDataClient):
     """Streams live market data from OANDA."""
 
     def __init__(
@@ -48,7 +49,7 @@ class OandaDataClient(LiveDataClient):
         self._subscribed_instruments = set()
         self._reconnect_count: int = 0
 
-    async def connect(self):
+    def connect(self):
         """Connect to OANDA stream."""
         if self._stream_task:
             return
@@ -57,12 +58,13 @@ class OandaDataClient(LiveDataClient):
         self._stream_task = self._loop.create_task(self._stream_quotes())
         self._set_connected(True)
 
-    async def disconnect(self):
+    def disconnect(self):
         """Disconnect from OANDA stream."""
         if self._stream_task:
             self._stream_task.cancel()
             try:
-                await self._stream_task
+                # We can't await here because disconnect is synchronous in base class.
+                pass
             except asyncio.CancelledError:
                 pass
             self._stream_task = None
@@ -77,6 +79,29 @@ class OandaDataClient(LiveDataClient):
         # Restart stream with new subscription list
         # OANDA requires all instruments in one request
         await self._restart_stream()
+
+    async def subscribe_instrument(self, instrument_id: InstrumentId):
+        """Subscribe to instrument (alias)."""
+        await self.subscribe(instrument_id)
+
+    async def subscribe_quote_ticks(self, instrument_id: InstrumentId):
+        """Subscribe to quote ticks (alias)."""
+        await self.subscribe(instrument_id)
+
+    async def subscribe_bars(self, bar_type):
+        """Subscribe to bars (alias).
+
+        We subscribe to the underlying instrument's quotes.
+        Nautilus will handle aggregation if configured as INTERNAL.
+        """
+        # bar_type is BarType object or similar?
+        # Check signature of base class.
+        # Usually subscribe_bars(self, bar_type: BarType)
+        if hasattr(bar_type, "instrument_id"):
+            await self.subscribe(bar_type.instrument_id)
+        else:
+            # Fallback if passed InstrumentId?
+            await self.subscribe(bar_type)
 
     async def unsubscribe(self, instrument_id: InstrumentId):
         """Unsubscribe from an instrument."""

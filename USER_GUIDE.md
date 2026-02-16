@@ -438,6 +438,12 @@ A: OANDA disconnected you. The script usually reconnects automatically. If it ha
 **Q: "401 Unauthorized"**
 A: Your Token is wrong or expired. Generate a new one on the OANDA website and update your `.env` file.
 
+**Q: "AttributeError: 'NoneType' object has no attribute 'value'" (Crash on start)**
+A: This usually means the `account_id` wasn't set correctly in the Execution Client. Ensure your `.env` has the correct `OANDA_ACCOUNT_ID`.
+
+**Q: "TypeError: Cannot convert OandaDataClient..."**
+A: This is an internal adapter error. It means the Data Client class isn't inheriting from `MarketDataClient`. This should be fixed in the latest version.
+
 **Q: I don't see any trades!**
 A: The market might be closed (Weekends). Or the strategy just hasn't found a good setup yet. Be patient.
 

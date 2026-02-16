@@ -141,7 +141,10 @@ class MTFConfluenceStrategy(Strategy):
                 )
 
             # Initial Signal Calc
+            self.log.info(f"DEBUG: Calculating signal for {tf}...")
             self._update_signal(tf)
+
+        self.log.info("DEBUG: Warmup loop finished.")
 
     def on_bar(self, bar: Bar):
         """Lifecycle: New Bar Closed."""
@@ -224,7 +227,10 @@ class MTFConfluenceStrategy(Strategy):
             score += self.signals[tf] * weight
 
         # Log status
-        # self.log.info(f"Confluence: {score:.3f} | {self.signals}")
+        self.log.info(
+            f"STATUS | Price: {price:.5f} | Score: {score:.3f} (Thresh: {threshold}) | "
+            f"Signals: {self.signals}"
+        )
 
         # Determine Bias
         bias = 0

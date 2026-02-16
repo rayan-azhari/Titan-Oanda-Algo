@@ -42,3 +42,7 @@ test_currency_pair.py
 # Data (Market Data)
 data/*.parquet
 *.parquet
+
+
+# Logs
+*.log
