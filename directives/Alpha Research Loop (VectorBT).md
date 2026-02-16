@@ -52,6 +52,13 @@ Run `execution/validate_data.py` to check for gaps, duplicates, and outlier spik
 - Tests strategies that require alignment across H1, H4, D, and W timeframes.
 - Generates `mtf_confluence_{IS/OOS}.html` reports.
 
+### 6.5. Gaussian Channel Optimisation
+
+- Run `execution/run_gaussian_optimisation.py`.
+- Sweeps Ehlers Gaussian Channel parameters (Period × Poles × Sigma) on EUR/USD H1.
+- Saves optimised parameters to `config/gaussian_channel_config.toml`.
+- Generates a Sharpe heatmap in `.tmp/reports/`.
+
 ### 7. Parity Transfer
 
 - Convert optimal parameters into `config/strategy_config.toml`.

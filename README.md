@@ -39,6 +39,8 @@ This project follows a **3-layer architecture** that separates *Probabilistic In
 │   ├── Strategy Validation (Backtesting.py).md
 │   ├── Ensemble Strategy Framework.md
 │   ├── Multi-Timeframe Confluence.md
+│   ├── Gaussian Channel Strategy Porting.md
+│   ├── Gaussian Channel Confluence Strategy.md
 │   ├── Live Deployment and Monitoring.md
 │   └── Workspace Initialisation.md
 ├── execution/                     ← Python scripts
@@ -52,13 +54,14 @@ This project follows a **3-layer architecture** that separates *Probabilistic In
 │   │   ├── execution.py           ← Order ExecutionClient
 │   │   ├── instruments.py         ← InstrumentProvider
 │   │   └── parsing.py             ← OANDA <-> Nautilus mapper
+│   ├── indicators/                ← Custom VectorBT indicators
+│   │   └── gaussian_filter.py     ← Ehlers Gaussian Channel (Numba + VBT)
 │   ├── spread_model.py            ← Time-varying spread estimation
 │   ├── run_vbt_optimisation.py    ← VectorBT parameter sweep + OOS validation
+│   ├── run_gaussian_optimisation.py ← Gaussian Channel parameter sweep
 │   ├── mtf_confluence.py          ← Multi-timeframe signal alignment
 │   ├── run_feature_selection.py   ← VBT → ML Feature Selection Bridge
 │   ├── build_ml_features.py       ← Feature matrix (X) + target (y) + MTF
-│   ├── train_ml_model.py          ← Walk-forward ML training
-│   ├── run_backtesting_validation.py ← Backtesting.py visual audit
 │   ├── train_ml_model.py          ← Walk-forward ML training
 │   ├── run_backtesting_validation.py ← Backtesting.py visual audit
 │   ├── run_ensemble.py            ← Multi-strategy signal aggregation
@@ -80,7 +83,8 @@ This project follows a **3-layer architecture** that separates *Probabilistic In
 │   ├── risk.toml                  ← Position & risk limits
 │   ├── spread.toml                ← Session-based spread estimates
 │   ├── ensemble.toml              ← Multi-strategy registry & weights
-│   └── mtf.toml                   ← Multi-timeframe weights & params
+│   ├── mtf.toml                   ← Multi-timeframe weights & params
+│   └── gaussian_channel_config.toml ← Gaussian Channel optimised params
 ├── models/                        ← Deliverable: trained .joblib models
 ├── tests/                         ← Unit tests
 ├── .tmp/                          ← Intermediate: raw data, reports, logs
@@ -108,10 +112,11 @@ uv run python execution/verify_connection.py
 
 ### 4. Alpha Research Loop
 ```bash
-uv run python execution/fetch_eur_usd.py       # Download raw OHLCV
-uv run python execution/run_vbt_optimisation.py # Run VBT parameter sweep
-uv run python execution/run_feature_selection.py # Run Feature Selection Bridge
-uv run python execution/run_mtf_backtest.py    # Test MTF Confluence Strategy
+uv run python execution/fetch_eur_usd.py              # Download raw OHLCV
+uv run python execution/run_vbt_optimisation.py        # Run VBT parameter sweep
+uv run python execution/run_gaussian_optimisation.py   # Gaussian Channel sweep
+uv run python execution/run_feature_selection.py       # Run Feature Selection Bridge
+uv run python execution/run_mtf_backtest.py            # Test MTF Confluence Strategy
 ```
 
 ### 5. ML Strategy Discovery
@@ -187,6 +192,7 @@ If all pass locally with zero errors, CI will also pass.
 - [x] Dockerization for cloud deployment
 - [x] VBT → ML Feature Selection Bridge (auto-tune indicators, feed into ML)
 - [x] Model → Live Engine Bridge (deploy .joblib models to NautilusTrader)
+- [x] Gaussian Channel Strategy (Ehlers filter + Numba + VBT optimisation)
 - [ ] Configure Slack Alerts for live trading monitoring
 - [ ] VectorBT Pro upgrade for production-scale mining
 

@@ -1,0 +1,53 @@
+# Directive: Gaussian Channel Confluence Strategy
+
+## Goal
+
+Implement a Multi-Timeframe (MTF) Gaussian Channel strategy where entries are taken on H1 only when aligned with H4, D1, and W1 trends.
+
+## Prerequisites
+
+> **✅ Dependency satisfied:** The Gaussian Filter indicator is implemented in `execution/indicators/gaussian_filter.py` (Numba `@njit` with dynamic `poles` and `period` inputs).
+
+## Inputs
+
+- **Data:** 5 Years of H1 OHLC (EUR/USD).
+- **Logic:** Gaussian Channel (Ehlers Gaussian Filter).
+
+## Execution Steps
+
+### 1. Indicator Construction (Numba)
+
+- ✅ Already implemented in `execution/indicators/gaussian_filter.py`.
+- Accepts dynamic `poles` (smoothness) and `period` inputs.
+- Wrapped in `vbt.IndicatorFactory` as `GaussianChannel`.
+
+### 2. The MTF Factory (VectorBT)
+
+Create a script `execution/run_gaussian_confluence.py`:
+
+- **Step A: Resample** — Take H1 Close prices and resample to H4, D1, W1.
+- **Step B: Calculate** — Run the Gaussian Channel logic on all four series independently.
+- **Step C: Broadcast** — Use `vbt.base.reshaping.broadcast_to()` to expand the H4, D1, and W1 indicator values back to the shape of the H1 index.
+- **Result:** Every H1 bar now knows what the Weekly Trend was at that specific moment (forward-filled).
+
+### 3. Confluence Logic
+
+Define "Trend Up": Price > Gaussian Middle Line.
+
+**Signal Generation:**
+- `is_weekly_up` = W1_Price > W1_Midline
+- `is_daily_up` = D1_Price > D1_Midline
+- `is_h4_up` = H4_Price > H4_Midline
+- `entry_signal` = (`is_weekly_up` AND `is_daily_up` AND `is_h4_up`) AND (H1_Price crosses above H1_Upper_Band)
+
+> **Note:** Validating "Full Confluence" (4 timeframes) vs "Partial Confluence" (3 timeframes) is part of the optimisation.
+
+### 4. Optimisation Loop
+
+- Optimise the lag (Poles) and period specifically for the higher timeframes.
+- **Hypothesis:** The Weekly channel likely needs different settings (e.g., slower) than the H1 channel.
+
+## Outputs
+
+- `config/gaussian_confluence_config.toml`
+- A plot showing the H1 price with the "shadow" of the Weekly Channel overlaid.

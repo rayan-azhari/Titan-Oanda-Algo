@@ -1,0 +1,12 @@
+# Gaussian Channel — Default Parameters
+# Will be overwritten by run_gaussian_optimisation.py with tuned values.
+
+[gaussian_channel]
+period = 144
+poles = 4
+sigma = 2.0
+
+[gaussian_channel.results]
+sharpe = 0.0
+total_return = 0.0
+n_trades = 0

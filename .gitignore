@@ -38,3 +38,7 @@ models/*.joblib
 # Test Outputs
 pytest_output*.txt
 test_currency_pair.py
+
+# Data (Market Data)
+data/*.parquet
+*.parquet

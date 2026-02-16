@@ -145,6 +145,39 @@ uv run python execution/run_feature_selection.py
 
 ---
 
+## 📈 Phase 3.6: Gaussian Channel Strategy
+
+The **Gaussian Channel** is a volatility-based indicator from the Ehlers Gaussian Filter. Instead of simple moving averages, it uses a cascade of EMAs (controlled by the "poles" parameter) to create a smoother, lower-lag channel. This is useful for catching momentum breakouts and trend-following bounces.
+
+**The Command:**
+```bash
+uv run python execution/run_gaussian_optimisation.py
+```
+
+**What it does:**
+1. Loads EUR/USD H1 data from `data/`.
+2. Runs the `GaussianChannel` indicator across a parameter grid:
+
+   | Parameter | Range |
+   |---|---|
+   | Period | 50 – 300 (step 10) |
+   | Poles | 1, 2, 3, 4 |
+   | Sigma | 1.5, 2.0, 2.5, 3.0 |
+
+3. **Signal Logic:**
+   - **Long:** Price crosses above Upper Band (momentum breakout) OR bounces off Middle Line (trend following).
+   - **Short:** Price crosses below Lower Band.
+4. Calculates Sharpe Ratio for each combo.
+5. Saves the best parameters to `config/gaussian_channel_config.toml`.
+6. Generates an interactive **Heatmap** (Poles vs Period, coloured by Sharpe).
+
+**Sanity Check:**
+- Open `config/gaussian_channel_config.toml` — you should see tuned values like `period = 140`, `poles = 3`, `sigma = 2.0`.
+- Open `.tmp/reports/gaussian_channel_heatmap.html` in your browser to see the heatmap.
+- Open `.tmp/reports/gaussian_channel_scoreboard.csv` for the full results table.
+
+---
+
 ## 🧠 Phase 4: Train the AI (Machine Learning)
 
 Simple rules (RSI < 30) are good, but AI is better. The ML pipeline now **automatically reads** the tuned parameters from `config/features.toml` (written by Phase 3.5). If the config doesn't exist, it falls back to sensible defaults.

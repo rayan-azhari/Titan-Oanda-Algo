@@ -17,6 +17,7 @@ dependencies = [
     "vectorbt>=0.26",
     "plotly>=5.20",
     "nautilus_trader>=1.200",
+    "numba>=0.59",
 ]
 
 [project.optional-dependencies]
