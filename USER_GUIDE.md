@@ -275,24 +275,40 @@ This is it. The system connects to OANDA and trades for real.
 - By default, we run in **PRACTICE** mode.
 - To trade real money, you must change `OANDA_ENVIRONMENT` to `live` in your `.env` file. **DO NOT DO THIS UNTIL YOU ARE SURE.**
 
-**The Command:**
+**Choose Your Strategy:**
+
+**Option A: ML Strategy (The Big Gun)**
 ```bash
 uv run python execution/run_nautilus_live.py
 ```
+*Uses the latest .joblib model trained by the ML pipeline from `models/`.*
 
-**What Happens:**
-1.  **Model Loading:** The system finds the latest `.joblib` model in `models/` and loads it.
-2.  **Smart Warmup:** It loads recent data history from `data/` so the strategy is ready to trade **immediately** (no waiting weeks for buffers to fill).
-3.  **Logs:** You will see text scrolling in the console.
-    - `[INFO] NautilusTrader started...`
-    - `[INFO] Loaded latest model: xgb_EUR_USD.joblib`
-    - `[INFO] Warmed up with 500 bars.`
-4.  **Streaming:** You should see live quotes appearing:
-    - `QUOTE EUR_USD: 1.0850 / 1.0851`
-5.  **Trading:** If the model predicts a profitable move, it will automatically place a trade.
+**Option B: MTF Confluence Strategy (The Reliable One)**
+```bash
+uv run python execution/run_live_mtf.py
+```
+*Uses the H1+H4+D+W trend confluence logic. Prints a status dashboard every hour.*
+
+**What Happens Next:**
+1.  **Connection:** The system connects to OANDA.
+2.  **Warmup:** It loads recent data from `data/` to calculate indicators immediately.
+3.  **Reconciliation:** It checks if you have existing positions and syncs them.
+4.  **Trading:** It streams live prices (`QUOTE EUR_USD...`) and executes trades when signals align.
+
+**Monitoring:**
+- **Logs:** Check `.tmp/logs/` for detailed files like `mtf_live_*.log`.
+- **Console:** Watch the live output for status dashboards and trade info.
+- **Process Check:** open a new terminal and run:
+  ```powershell
+  Get-Process -Name "python"
+  ```
 
 **How to Stop:**
-Press `Ctrl + C` in the terminal.
+- Press `Ctrl + C` in the terminal.
+- OR run this in another terminal:
+  ```powershell
+  Get-Process -Name "python" | Stop-Process -Force
+  ```
 
 ---
 

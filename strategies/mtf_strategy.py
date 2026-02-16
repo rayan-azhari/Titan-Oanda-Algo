@@ -66,9 +66,13 @@ class MTFConfluenceStrategy(Strategy):
         # Initialize to 0 (Neutral)
         self.signals = {tf: 0.0 for tf in ["H1", "H4", "D", "W"]}
 
-        # Latest ATR (from H1 usually, or specified TF)
-        # We'll use H1 ATR for sizing as per original design (or H4? Backtest used D/H4/H1...
-        # Sizing usually uses entry timeframe volatility => H1)
+        # Raw indicator values for the status dashboard
+        self.indicator_state = {
+            tf: {"fast_ma": None, "slow_ma": None, "rsi": None}
+            for tf in ["H1", "H4", "D", "W"]
+        }
+
+        # Latest ATR (H1) for volatility-adjusted sizing
         self.latest_atr = None
 
     def _load_toml(self, path: str) -> dict:
@@ -205,14 +209,19 @@ class MTFConfluenceStrategy(Strategy):
                 self.latest_atr = float(atr_s.iloc[-1])
 
         # Calc Signal Components (Last bar)
-        # Trend
         last_fast = s_fast.iloc[-1]
         last_slow = s_slow.iloc[-1]
-        trend_score = 0.5 if last_fast > last_slow else -0.5
-
-        # Momentum
         last_rsi = r.iloc[-1]
+
+        trend_score = 0.5 if last_fast > last_slow else -0.5
         mom_score = 0.5 if last_rsi > 50 else -0.5
+
+        # Store for dashboard
+        self.indicator_state[tf] = {
+            "fast_ma": last_fast,
+            "slow_ma": last_slow,
+            "rsi": last_rsi,
+        }
 
         # Total Signal
         self.signals[tf] = trend_score + mom_score  # Range: -1.0 to +1.0
@@ -226,23 +235,82 @@ class MTFConfluenceStrategy(Strategy):
         for tf, weight in weights.items():
             score += self.signals[tf] * weight
 
-        # Log status
-        self.log.info(
-            f"STATUS | Price: {price:.5f} | Score: {score:.3f} (Thresh: {threshold}) | "
-            f"Signals: {self.signals}"
-        )
-
         # Determine Bias
-        bias = 0
         if score >= threshold:
-            bias = 1  # Long
+            bias = 1
+            signal_label = "LONG"
         elif score <= -threshold:
-            bias = -1  # Short
+            bias = -1
+            signal_label = "SHORT"
         else:
-            bias = 0  # Neutral
+            bias = 0
+            signal_label = "FLAT"
+
+        # Current position state
+        position = self.cache.position(self.instrument_id)
+        pos_label = "FLAT"
+        if position and position.is_open:
+            pos_label = "LONG" if str(position.side) == "LONG" else "SHORT"
+
+        # --- Status Dashboard ---
+        self._log_status_dashboard(
+            price=price,
+            score=score,
+            threshold=threshold,
+            signal_label=signal_label,
+            pos_label=pos_label,
+            weights=weights,
+        )
 
         # Execute
         self._execute_bias(bias, price)
+
+    def _log_status_dashboard(
+        self,
+        price: Decimal,
+        score: float,
+        threshold: float,
+        signal_label: str,
+        pos_label: str,
+        weights: dict,
+    ):
+        """Print a formatted multi-timeframe status dashboard."""
+        sep = "═" * 55
+        lines = [f"\n{sep}"]
+        lines.append(f"  MTF STATUS @ Price: {price:.5f}")
+        lines.append(f"{'─' * 55}")
+
+        for tf in ["D", "H4", "H1", "W"]:
+            st = self.indicator_state[tf]
+            sig = self.signals[tf]
+            w = weights.get(tf, 0)
+
+            if st["fast_ma"] is not None:
+                sma_dir = "BULL" if st["fast_ma"] > st["slow_ma"] else "BEAR"
+                rsi_val = f"{st['rsi']:.1f}"
+            else:
+                sma_dir = " ?? "
+                rsi_val = " ? "
+
+            weighted = sig * w
+            lines.append(
+                f"  {tf:>2}  │  SMA: {sma_dir}  │  RSI: {rsi_val:>5}"
+                f"  │  Signal: {sig:+.1f}  │  Weighted: {weighted:+.3f}"
+            )
+
+        lines.append(f"{'─' * 55}")
+        lines.append(
+            f"  CONFLUENCE: {score:+.3f}  │  Threshold: ±{threshold}"
+            f"  │  Signal: {signal_label}"
+        )
+        lines.append(
+            f"  Position: {pos_label}"
+            f"  │  ATR(14): {self.latest_atr:.5f}" if self.latest_atr else
+            f"  Position: {pos_label}  │  ATR: pending"
+        )
+        lines.append(sep)
+
+        self.log.info("\n".join(lines))
 
     def _execute_bias(self, bias: int, price: Decimal):
         """Manage Positions based on Bias (Signal Only)."""

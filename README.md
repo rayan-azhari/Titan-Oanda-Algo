@@ -141,16 +141,40 @@ docker run --env-file .env titan-oanda-algo
 ```
 
 ### 8. NautilusTrader Live
-```bash
-# Deploys the latest trained model from models/ to OANDA live trading
-# - Auto-loads latest .joblib model
-# - Auto-warms up strategy with local Parquet data for instant readiness
-# - Ensures OANDA_ACCOUNT_ID and OANDA_ACCESS_TOKEN are set in .env
-uv run python execution/run_nautilus_live.py
 
-# OR for the Multi-Timeframe Confluence Strategy:
+#### Start the MTF Confluence Strategy
+```bash
+# Multi-Timeframe Confluence Strategy (H1 + H4 + D + W)
 uv run python execution/run_live_mtf.py
+
+# OR for the ML Strategy:
+uv run python execution/run_nautilus_live.py
 ```
+The engine will:
+1. Load instruments from OANDA.
+2. Warm up indicators from local Parquet data (`data/EUR_USD_H1.parquet`, etc.).
+3. Reconcile open positions with OANDA (if any exist).
+4. Subscribe to the live price stream and start processing bars.
+
+A **status dashboard** prints to the Nautilus log on every bar close showing per-timeframe SMA direction, RSI, confluence score, and position state.
+
+#### Stop the Strategy
+```powershell
+# Option 1: Press Ctrl+C in the terminal running the strategy
+
+# Option 2: Kill from another terminal
+Get-Process -Name "python" | Stop-Process -Force
+```
+
+#### Monitor
+```powershell
+# Tail the log file in real time
+Get-Content ".tmp/logs/mtf_live_*.log" -Tail 50 -Wait
+
+# Check which python processes are running
+Get-Process -Name "python" -ErrorAction SilentlyContinue
+```
+Logs are stored in `.tmp/logs/` with timestamps (e.g. `mtf_live_20260216_161315.log`).
 
 ## Research Tools
 
@@ -200,8 +224,13 @@ If all pass locally with zero errors, CI will also pass.
 - [x] VBT → ML Feature Selection Bridge (auto-tune indicators, feed into ML)
 - [x] Model → Live Engine Bridge (deploy .joblib models to NautilusTrader)
 - [x] Gaussian Channel Strategy (Ehlers filter + Numba + VBT optimisation)
+- [x] Adapter Reconciliation (position sync on engine restart)
+- [x] Data Client Streaming Fix (4 bugs in subscribe/parse/publish pipeline)
 - [ ] Configure Slack Alerts for live trading monitoring
 - [ ] VectorBT Pro upgrade for production-scale mining
+- [ ] **Strategy Tests:** Add integration tests for `mtf_confluence.py` with fixed data inputs
+- [ ] **Refactor:** Move `run_*.py` scripts to `scripts/` directory
+- [ ] **CI/CD:** Add end-to-end "dry run" test for key scripts
 
 ## Rules of Engagement
 

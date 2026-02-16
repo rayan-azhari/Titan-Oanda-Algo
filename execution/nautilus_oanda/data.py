@@ -60,61 +60,59 @@ class OandaDataClient(LiveDataClient, MarketDataClient):
 
     def disconnect(self):
         """Disconnect from OANDA stream."""
+        self._set_connected(False)
         if self._stream_task:
             self._stream_task.cancel()
-            try:
-                # We can't await here because disconnect is synchronous in base class.
-                pass
-            except asyncio.CancelledError:
-                pass
             self._stream_task = None
-        self._set_connected(False)
 
-    async def subscribe(self, instrument_id: InstrumentId):
-        """Subscribe to an instrument."""
+    def _add_instrument(self, instrument_id: InstrumentId):
+        """Add an instrument to the subscription set and restart stream.
+
+        NOTE: Nautilus DataEngine calls subscribe methods synchronously,
+        so we schedule the async stream restart via create_task.
+        """
         if instrument_id in self._subscribed_instruments:
             return
 
         self._subscribed_instruments.add(instrument_id)
-        # Restart stream with new subscription list
-        # OANDA requires all instruments in one request
-        await self._restart_stream()
+        self._loop.create_task(self._restart_stream())
 
-    async def subscribe_instrument(self, instrument_id: InstrumentId):
-        """Subscribe to instrument (alias)."""
-        await self.subscribe(instrument_id)
+    def subscribe(self, command):
+        """Subscribe to data (command-based)."""
+        if hasattr(command, "instrument_id"):
+            self._add_instrument(command.instrument_id)
 
-    async def subscribe_quote_ticks(self, instrument_id: InstrumentId):
-        """Subscribe to quote ticks (alias)."""
-        await self.subscribe(instrument_id)
+    def subscribe_instrument(self, command):
+        """Subscribe to instrument updates."""
+        self._add_instrument(command.instrument_id)
 
-    async def subscribe_bars(self, bar_type):
-        """Subscribe to bars (alias).
+    def subscribe_quote_ticks(self, command):
+        """Subscribe to quote ticks for an instrument."""
+        self._add_instrument(command.instrument_id)
+
+    def subscribe_bars(self, command):
+        """Subscribe to bars.
 
         We subscribe to the underlying instrument's quotes.
         Nautilus will handle aggregation if configured as INTERNAL.
         """
-        # bar_type is BarType object or similar?
-        # Check signature of base class.
-        # Usually subscribe_bars(self, bar_type: BarType)
-        if hasattr(bar_type, "instrument_id"):
-            await self.subscribe(bar_type.instrument_id)
-        else:
-            # Fallback if passed InstrumentId?
-            await self.subscribe(bar_type)
+        if hasattr(command, "instrument_id"):
+            self._add_instrument(command.instrument_id)
+        elif hasattr(command, "bar_type"):
+            self._add_instrument(command.bar_type.instrument_id)
 
-    async def unsubscribe(self, instrument_id: InstrumentId):
+    def unsubscribe(self, command):
         """Unsubscribe from an instrument."""
+        instrument_id = command.instrument_id if hasattr(command, "instrument_id") else command
         if instrument_id not in self._subscribed_instruments:
             return
 
         self._subscribed_instruments.discard(instrument_id)
-        # Restart stream with new subscription list
-        await self._restart_stream()
+        self._loop.create_task(self._restart_stream())
 
     async def _restart_stream(self):
         """Restart the stream with updated subscriptions."""
-        if not self._connected:
+        if not self.is_connected:
             return
 
         # Cancel current stream
@@ -144,7 +142,7 @@ class OandaDataClient(LiveDataClient, MarketDataClient):
         max_attempts = self._config.reconnect_attempts
         base_delay = self._config.reconnect_delay
 
-        while self._connected:
+        while self.is_connected:
             # Convert InstrumentIds back to OANDA format (EUR_USD)
             instruments = [
                 inst.symbol.value.replace("/", "_") for inst in self._subscribed_instruments
@@ -213,15 +211,20 @@ class OandaDataClient(LiveDataClient, MarketDataClient):
         # Bid/Ask Mapping:
         # We use the first level of depth (index 0) which represents the best available price.
         # Liquidity is cast to standard integer units.
-        bid = Decimal(data["bids"][0]["price"])
-        ask = Decimal(data["asks"][0]["price"])
+        bid_str = data["bids"][0]["price"]
+        ask_str = data["asks"][0]["price"]
+        bid = Decimal(bid_str)
+        ask = Decimal(ask_str)
         bid_size = int(data["bids"][0]["liquidity"])
         ask_size = int(data["asks"][0]["liquidity"])
 
+        # Derive precision from price string decimal places (e.g. "1.18523" → 5)
+        px_precision = len(bid_str.split(".")[-1]) if "." in bid_str else 0
+
         tick = QuoteTick(
             instrument_id=instrument_id,
-            bid_price=Price(bid, precision=None),
-            ask_price=Price(ask, precision=None),
+            bid_price=Price(bid, precision=px_precision),
+            ask_price=Price(ask, precision=px_precision),
             bid_size=Quantity(bid_size, precision=0),
             ask_size=Quantity(ask_size, precision=0),
             ts_event=timestamp.value,  # Nanoseconds (uint64)
@@ -232,8 +235,8 @@ class OandaDataClient(LiveDataClient, MarketDataClient):
         # This method runs in the executor thread. We must properly schedule
         # the data handling on the main asyncio event loop using `call_soon_threadsafe`
         # to ensure thread-safety within the Nautilus core.
-        self._loop.call_soon_threadsafe(self.handle_data, tick)
+        self._loop.call_soon_threadsafe(self._handle_data_py, tick)
 
     def handle_data(self, data: QuoteTick):
         """Process incoming data (run on loop)."""
-        self._msgbus.publish_data(data)
+        self._handle_data_py(data)

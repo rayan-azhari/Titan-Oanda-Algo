@@ -45,11 +45,31 @@ class OandaDataClient(LiveDataClient):
 ```
 *Why?* The Nautilus `DataEngine` performs an `isinstance(client, MarketDataClient)` check before allowing subscription commands like `SubscribeBars`.
 
-#### Subscription Aliases
-The Nautilus engine calls specific methods based on the command type. We alias them all to our single underlying `subscribe` logic because OANDA's pricing stream handles all instruments identically.
--   `subscribe_quote_ticks(instrument_id)` -> calls `subscribe()`
--   `subscribe_bars(bar_type)` -> calls `subscribe()` (Nautilus aggregates bars internally from our ticks)
--   `subscribe_instrument(instrument_id)` -> calls `subscribe()`
+#### Subscription Methods (Command-Based API)
+The Nautilus `DataEngine` dispatches **command objects** (not raw IDs) to subscribe methods. All methods must accept `(self, command)` and extract `.instrument_id` from the command:
+```python
+def subscribe_quote_ticks(self, command):   # command.instrument_id → InstrumentId
+def subscribe_bars(self, command):           # command.instrument_id or command.bar_type.instrument_id
+def subscribe_instrument(self, command):     # command.instrument_id
+```
+> [!CAUTION]
+> These methods **must NOT be `async def`**. Nautilus calls them synchronously.
+> If declared as `async`, the returned coroutine is silently discarded and subscriptions never execute.
+
+Internally, all methods delegate to `_add_instrument()` which schedules a stream restart via `self._loop.create_task(self._restart_stream())`.
+
+#### Data Flow Pipeline
+```
+OANDA PricingStream → _consume_stream() [executor thread]
+  → _parse_quote() → QuoteTick
+  → call_soon_threadsafe(_handle_data_py)
+  → Nautilus DataEngine → Bar aggregation (INTERNAL)
+  → Strategy.on_bar()
+```
+
+> [!IMPORTANT]
+> Use `self._handle_data_py(tick)` to publish data — **not** `self._msgbus.publish_data()`.
+> The `Price()` constructor requires an **integer** precision (e.g. `5` for `1.18523`), not `None`.
 
 #### Connection Resilience
 -   Implements **exponential backoff** (up to 60s) if the OANDA stream disconnects.
@@ -67,13 +87,28 @@ def account_id(self) -> AccountId:
 ```
 
 #### Reconciliation (Startup State)
-When the strategy starts, it must know about existing orders to avoid duplicate trades.
--   **Method:** `generate_order_status_reports`
+When the engine starts (or reconnects), it must reconcile its internal state with OANDA to avoid duplicate trades or ghost positions. Two methods handle this:
+
+**Order Reconciliation — `generate_order_status_reports`**
 -   **Logic:**
     1.  Fetches all `PENDING` orders from OANDA REST API.
     2.  Filters for orders with `clientExtensions.id` (checking if they belong to Nautilus).
     3.  Maps OANDA string fields to Nautilus Enums (see below).
     4.  Returns a list of `OrderStatusReport` objects.
+
+**Position Reconciliation — `generate_position_status_reports`**
+-   **Endpoint:** `oandapyV20.endpoints.positions.OpenPositions`
+-   **Logic:**
+    1.  Fetches all open positions from OANDA.
+    2.  Parses `long.units` (positive) and `short.units` (negative) for each instrument.
+    3.  Computes net position: `net_units = long_units + short_units`.
+    4.  If net is non-zero, creates a `PositionStatusReport` with:
+        - `PositionSide.LONG` or `PositionSide.SHORT` based on net direction.
+        - `Quantity(abs(net_units))` — Nautilus requires unsigned quantities.
+        - `avg_px_open` from the dominant side's `averagePrice`.
+    5.  Flat positions (net = 0) are skipped.
+-   **Error Handling:** API failures are caught and logged; an empty list is returned.
+-   **Tests:** 6 unit tests in `tests/test_oanda_reconciliation.py`.
 
 #### Enum Mapping
 OANDA returns strings; Nautilus expects Enums.
@@ -178,4 +213,4 @@ If you need to extend this adapter:
 | Market Orders | ✅ Yes | |
 | Limit Orders | ✅ Yes | GTC by default |
 | Stop/Trailing | ❌ No | Logic handled by Strategy (Soft Stops) |
-| Reconciliation | ✅ Yes | Open orders only |
+| Reconciliation | ✅ Yes | Open orders + Open positions |

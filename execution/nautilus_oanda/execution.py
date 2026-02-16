@@ -10,8 +10,10 @@ from typing import Optional
 
 import oandapyV20
 import oandapyV20.endpoints.orders as orders
+import oandapyV20.endpoints.positions as positions
 import oandapyV20.endpoints.transactions as transactions
 from nautilus_trader.common.providers import InstrumentProvider
+from nautilus_trader.core.uuid import UUID4
 from nautilus_trader.execution.reports import (
     FillReport,
     OrderStatusReport,
@@ -25,6 +27,7 @@ from nautilus_trader.model.enums import (
     OrderSide,
     OrderStatus,
     OrderType,
+    PositionSide,
     TimeInForce,
 )
 from nautilus_trader.model.events import OrderCanceled, OrderFilled
@@ -32,6 +35,7 @@ from nautilus_trader.model.identifiers import (
     AccountId,
     ClientId,
     ClientOrderId,
+    PositionId,
     TradeId,
     Venue,
     VenueOrderId,
@@ -420,5 +424,51 @@ class OandaExecutionClient(LiveExecutionClient):
         return []
 
     async def generate_position_status_reports(self, command) -> list[PositionStatusReport]:
-        """Generate position reports (Reconciliation). Stub: Return empty."""
-        return []
+        """Generate position reports by fetching open positions from OANDA (Reconciliation).
+
+        Queries the OANDA V20 OpenPositions endpoint, computes the net position
+        for each instrument, and produces a PositionStatusReport for the engine
+        to reconcile its internal state on startup or reconnect.
+        """
+        reports = []
+        try:
+            r = positions.OpenPositions(self._account_id)
+            data = await self._loop.run_in_executor(None, lambda: self._api.request(r))
+
+            for p_data in data.get("positions", []):
+                instrument_id = parse_instrument_id(p_data.get("instrument", ""))
+
+                # OANDA V20: long.units is positive, short.units is negative
+                long_units = int(p_data.get("long", {}).get("units", "0"))
+                short_units = int(p_data.get("short", {}).get("units", "0"))
+                net_units = long_units + short_units
+
+                if net_units == 0:
+                    continue
+
+                # Determine position side and average price from the dominant side
+                if net_units > 0:
+                    position_side = PositionSide.LONG
+                    avg_px_str = p_data.get("long", {}).get("averagePrice", "0")
+                else:
+                    position_side = PositionSide.SHORT
+                    avg_px_str = p_data.get("short", {}).get("averagePrice", "0")
+
+                report = PositionStatusReport(
+                    account_id=AccountId(f"OANDA-{self._account_id}"),
+                    instrument_id=instrument_id,
+                    position_side=position_side,
+                    quantity=Quantity(abs(net_units), precision=0),
+                    report_id=UUID4(),
+                    ts_last=self._clock.timestamp_ns(),
+                    ts_init=self._clock.timestamp_ns(),
+                    venue_position_id=PositionId(instrument_id.value),
+                    avg_px_open=Decimal(avg_px_str),
+                )
+                reports.append(report)
+
+        except Exception as e:
+            self._log.error(f"Failed to generate position status reports: {e}")
+
+        return reports
+
